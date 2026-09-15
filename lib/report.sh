@@ -120,8 +120,14 @@ report_esp_one() {
   case "$mp" in ''|-|none|null) mp='' ;; esac
   if [ -n "$mp" ]; then report_kv "esp[$n].mounted" yes; else report_kv "esp[$n].mounted" no; fi
   if [ -z "$mp" ]; then
-    report_kv "esp[$n].efi-apple" "${has_apple:-unknown}"
-    report_kv "esp[$n].note" not-mounted
+    # Not mounted: Apple's ESP on a dual-boot Mac. As root, look at it through a read-only
+    # probe mount so the bundle can tell an intact machine from a wiped one.
+    if report_have esp_with_ro_mount && esp_with_ro_mount "$dev" report_esp_files "$n" 2>/dev/null; then
+      report_kv "esp[$n].note" probed-read-only
+    else
+      report_kv "esp[$n].efi-apple" "${has_apple:-unknown}"
+      if report_is_root; then report_kv "esp[$n].note" not-mounted; else report_kv "esp[$n].note" not-mounted-needs-root; fi
+    fi
     return
   fi
   if [ ! -r "$mp" ] || [ ! -x "$mp" ]; then
@@ -129,6 +135,12 @@ report_esp_one() {
     report_kv "esp[$n].note" needs-root
     return
   fi
+  report_esp_files "$n" "$mp"
+}
+
+# report_esp_files N MOUNTPOINT: the EFI/APPLE fields of one mounted ESP (names and sizes only).
+report_esp_files() {
+  local n="$1" mp="$2"
   local apple="$mp/EFI/APPLE" eos="$mp/EFI/APPLE/EMBEDDEDOS"
   report_kv "esp[$n].efi-apple" "$(report_yn "$apple")"
   report_kv "esp[$n].embeddedos" "$(report_yn "$eos")"
@@ -160,6 +172,15 @@ report_section_esp() {
     n=$((n + 1))
   done <<<"$lines"
   report_kv esp-candidates "$n"
+  if report_have esp_select; then
+    local sel
+    if sel=$(esp_select 2>/dev/null); then
+      report_kv esp-selected "${sel%% *}"
+      report_kv esp-selected-why "$(esp_select --why 2>/dev/null | tr ' ' '-')"
+    else
+      report_kv esp-selected ambiguous
+    fi
+  fi
 }
 
 report_section_reset() {

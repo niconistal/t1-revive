@@ -5,11 +5,13 @@
 # under $T1R_STATE, optionally copied to DIR (a USB stick). Every dangerous command requires
 # this first: regenerate checks that a backup tar exists or that EFI/APPLE is absent.
 # Nothing from inside the files is ever printed; only names, sizes and checksums.
+# Exit 0 means a tar was written (or a dry run described one). A wiped ESP exits 1 with
+# "nothing was backed up"; a second internal ESP next to an empty one is refused with exit 4.
 #
 # shellcheck shell=bash
 
 cmd_backup() {
-  local to='' esp dev mp stamp tar sum short n copy
+  local to='' esp dev mp stamp tar sum short n copy others o internal=''
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --to) [[ $# -ge 2 ]] || { echo "usage: t1-revive backup [--to DIR]" >&2; return 2; }; to=$2; shift;;
@@ -32,10 +34,20 @@ cmd_backup() {
   note "ESP: $dev at $mp"
 
   if [[ ! -d "$mp/EFI/APPLE" ]]; then
-    note "no EFI/APPLE on the ESP: nothing to back up (a wiped ESP)"
-    show "  no Apple firmware files on this disk: nothing to back up"
-    diag step=backup result=ok apple=absent
-    return 0
+    # Nothing here. That is only "a wiped ESP" when this is the machine's only internal ESP; a
+    # Linux install next to macOS has two, and a clean exit here would tell the owner of an
+    # intact machine that there is nothing to save. So: refuse when another internal ESP
+    # exists, and never return 0 without a tar.
+    others=$(esp_candidates | awk -v d="$dev" '$1 != d {printf "%s(EFI/APPLE:%s) ", $1, $3}')
+    for o in $others; do esp_removable "${o%%(*}" || internal="$internal$o "; done
+    if [[ -n "$internal" ]]; then
+      diag step=backup result=error code=4 apple=absent esp_candidates="$(esp_candidates | wc -l)"
+      die 4 "no EFI/APPLE on $dev ($(esp_select --why)), and this machine has another EFI system partition: ${internal% }. Nothing was backed up. If that one is Apple's, pin it: T1R_ESP_DEV=/dev/... in $T1R_CONF/t1-revive.conf, then run backup again; 'sudo t1-revive status' shows what each partition holds"
+    fi
+    warn "no EFI/APPLE on the ESP $dev: nothing to back up (a wiped ESP)"
+    show "  no Apple firmware files on this disk: nothing was backed up"
+    diag step=backup result=none apple=absent
+    return 1
   fi
 
   n=$(find "$mp/EFI/APPLE" -type f 2>/dev/null | wc -l)

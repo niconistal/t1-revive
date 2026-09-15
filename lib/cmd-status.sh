@@ -26,7 +26,13 @@ cmd_status() {
   while read -r dev mp has; do
     [[ -n "$dev" ]] || continue
     n=$((n + 1))
-    if [[ "$mp" = "-" ]]; then _st "ESP" "$dev (not mounted)"
+    if [[ "$mp" = "-" ]]; then
+      case "$has" in
+        yes) _st "ESP" "$dev (not mounted; looked at read-only): EFI/APPLE present";;
+        no) _st "ESP" "$dev (not mounted; looked at read-only): no EFI/APPLE";;
+        *) if [[ "${EUID:-$(id -u)}" = 0 ]]; then _st "ESP" "$dev (not mounted; could not be looked at)"
+           else _st "ESP" "$dev (not mounted; run as root to look inside it)"; fi;;
+      esac
     else
       case "$has" in yes) out="EFI/APPLE present";; no) out="no EFI/APPLE";; *) out="EFI/APPLE: not readable";; esac
       [[ ! -r "$mp" ]] && out="EFI/APPLE: not readable as this user"
@@ -38,7 +44,8 @@ cmd_status() {
   done < <(esp_candidates)
   [[ "$n" = 0 ]] && _st "ESP" "none found"
   if [[ "$n" -gt 1 ]]; then
-    if esp=$(esp_select); then _st "" "selected: ${esp%% *}"; else _st "" "ambiguous: t1-revive cannot choose between them"; fi
+    if esp=$(esp_select); then _st "" "selected: ${esp%% *} ($(esp_select --why))"
+    else _st "" "ambiguous: t1-revive cannot choose between them (pin one with T1R_ESP_DEV in t1-revive.conf)"; fi
   fi
 
   out=$(frst_method)

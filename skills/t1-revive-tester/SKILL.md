@@ -56,8 +56,10 @@ person types every command that touches the T1.
 **`recovery`** (`05ac:1281`)
 - `esp[n].embeddedos: no` on every ESP: the wiped case, the reason this tool exists.
   Path: `t1-revive preflight` (fix every `NO` line; exit 3 means stop and fix),
-  `t1-revive backup --to PATH` (recommended, not required; any destination off this disk,
-  a stick is only one option), then the person types `sudo t1-revive regenerate` after
+  `sudo t1-revive backup --to PATH` (recommended, not required; any destination off this disk,
+  a stick is only one option; exit 1 means a wiped ESP and nothing saved, exit 4 means a
+  second EFI system partition and the tool would not choose: stop and read
+  docs/troubleshooting.md), then the person types `sudo t1-revive regenerate` after
   reading the README caution. Without a backup `regenerate` warns and asks for one
   confirmation; it does not stop. Say that plainly rather than presenting the backup as a
   gate.

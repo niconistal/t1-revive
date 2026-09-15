@@ -37,11 +37,11 @@ tarball and fails the build if the two differ, and checks that the `VERSION` fil
 
 ## Versioning
 
-`VERSION` is `0.1.0`; a pre-release `VERSION` like `0.1.1-dev` cannot be a `pkgver` (no `-`), so the PKGBUILD carries both:
+`VERSION` is `0.1.1`; a pre-release `VERSION` like `0.1.2-dev` cannot be a `pkgver` (no `-`), so the PKGBUILD carries both:
 
 ```
-_relver=0.1.0         # the git tag is v$_relver, and VERSION must equal this
-pkgver=0.1.0          # the Arch version
+_relver=0.1.1         # the git tag is v$_relver, and VERSION must equal this
+pkgver=0.1.1          # the Arch version
 ```
 
 Bump both when `VERSION` changes, and reset `pkgrel=1`.
@@ -88,11 +88,11 @@ cp ../../vendor/refs.env "$work/refs.env"
 #   ... libplist-....tar.gz ... Passed   (eight times)
 
 # 4. rehearse build() the way makepkg would, from a clean export of the tree:
-mkdir -p "$work/src/t1-revive-0.1.0"
-git -C ../.. archive --format=tar HEAD | tar -C "$work/src/t1-revive-0.1.0" -xf -
+mkdir -p "$work/src/t1-revive-0.1.1"
+git -C ../.. archive --format=tar HEAD | tar -C "$work/src/t1-revive-0.1.1" -xf -
 for t in "$work"/dl/*.tar.gz; do tar -C "$work/src" -xzf "$t"; done   # -> <name>-<commit>/
 # rename each <name>-<commit> to vendor/src/<name>, then:
-( cd "$work/src/t1-revive-0.1.0" && bash build.sh --offline --prefix "$work/src/prefix" )
+( cd "$work/src/t1-revive-0.1.1" && bash build.sh --offline --prefix "$work/src/prefix" )
 ```
 
 After the tag exists:
@@ -138,7 +138,7 @@ LGPL/GPL source-availability requirement (see `vendor/README.md`).
 ## Trial build (2026-09-11)
 
 `makepkg -fd` from `packaging/arch/` inside the checkout, with the release tarball provided
-locally (`git archive --prefix=t1-revive-0.1.0/ -o $SRCDEST/t1-revive-0.1.0.tar.gz HEAD`,
+locally (`git archive --prefix=t1-revive-0.1.1/ -o $SRCDEST/t1-revive-0.1.1.tar.gz HEAD`,
 which makepkg picks up instead of downloading the not-yet-existing tag) and `patchelf` on PATH
 from a Python venv (`pip install patchelf`), produced `t1-revive-0.1.0.dev-1-x86_64.pkg.tar.zst`
 (0.9 MB) plus a debug package. Verified: `/usr/bin/t1-revive` symlink, `prefix/bin/idevicerestore`

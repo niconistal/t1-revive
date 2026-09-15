@@ -88,14 +88,43 @@ backup_load() {
 }
 
 # --- a wiped ESP --------------------------------------------------------------------------------
-@test "backup: an ESP without EFI/APPLE exits 0 with nothing to back up" {
+@test "backup: the only ESP without EFI/APPLE exits 1 and says nothing was backed up" {
   export T1R_DRY_RUN=0
   t1r_fake_esp; t1r_esp_snapshot; backup_load
   run cmd_backup
-  assert_status 0
+  assert_status 1
   assert_contains "$output" "nothing to back up"
+  assert_contains "$output" "nothing was backed up"
   assert_eq "" "$(find "$T1R_STATE" -maxdepth 1 -name 'efi-backup-*' || true)"
-  assert_contains "$(t1r_diag_lines)" "step=backup result=ok apple=absent"
+  assert_contains "$(t1r_diag_lines)" "step=backup result=none apple=absent"
+  t1r_esp_unchanged
+}
+
+@test "backup: an empty ESP next to another internal ESP is refused with exit 4 (issue #2)" {
+  # The pinned partition is empty and the machine has a second internal ESP: exit 0 here
+  # would tell the owner of an intact Mac there is nothing to save.
+  export T1R_DRY_RUN=0
+  t1r_fake_esp lsblk-two-esp-both-mounted; t1r_esp_snapshot
+  mkdir -p "$T1R_TMP/esp2"; sed -i "s|@ESP2_MNT@|$T1R_TMP/esp2|" "$T1R_LSBLK_JSON"
+  export T1R_ESP_DEV=/dev/sdz1
+  backup_load
+  run cmd_backup
+  assert_status 4
+  assert_contains "$output" "Nothing was backed up"
+  assert_contains "$output" "/dev/sdy1"
+  assert_contains "$output" "T1R_ESP_DEV"
+  assert_eq "" "$(find "$T1R_STATE" -maxdepth 1 -name 'efi-backup-*' || true)"
+  assert_contains "$(t1r_diag_lines)" "step=backup result=error code=4 apple=absent"
+  t1r_esp_unchanged
+}
+
+@test "backup: dual-boot layout, the Apple ESP is chosen over the one at /boot" {
+  export T1R_DRY_RUN=0
+  t1r_fake_esp lsblk-two-esp-boot-apple; t1r_esp_apple_data; t1r_esp_snapshot; backup_load
+  run cmd_backup
+  assert_status 0
+  assert_contains "$output" "ESP: /dev/sdy1 at $T1R_ESP_MNT"
+  assert_contains "$output" "contains FDRData: yes"
   t1r_esp_unchanged
 }
 

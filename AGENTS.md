@@ -86,6 +86,7 @@ docs/                    how-it-works, threat-model, troubleshooting, diagnostic
 | `T1R_STRICT` | `0` | `1` = stricter step gates (exit status of the restore tool, full 30 s boot verdict) |
 | `T1R_FIRMWARE` | unset | a local EmbeddedOSFirmware.pkg to use instead of downloading (checksum still verified) |
 | `T1R_ESP_DEV` | unset | pin the ESP device when two candidates look alike (conf file) |
+| `T1R_ESP_PROBE` | `auto` | unmounted ESPs: `auto` = look inside through a read-only mount as root on a real block device; `0` = never; `1` = always try (tests, stub mount) |
 | `T1R_FRST_METHOD` | unset | pin the reset method when the tables define several; must be one of them (conf file) |
 
 ## Exit codes
@@ -138,10 +139,19 @@ model_status ID          prints: tested | untested | unsupported
                          untested: MacBookPro13,2 MacBookPro13,3 MacBookPro14,2  (warn and continue)
                          unsupported: anything else (die 4)
 esp_candidates           prints "DEVICE MOUNTPOINT HAS_APPLE" per line for partitions with
-                         PARTTYPE c12a7328-f81f-11d2-ba4b-00a0c93ec93b (from lsblk -J or T1R_LSBLK_JSON)
-esp_select               picks the single ESP: the one mounted at /boot, /efi or /boot/efi wins;
-                         only when none is, the single non-removable ESP holding EFI/APPLE;
-                         prints "DEVICE MOUNTPOINT"; returns 1 if ambiguous (T1R_ESP_DEV pins one)
+                         PARTTYPE c12a7328-f81f-11d2-ba4b-00a0c93ec93b (from lsblk -J or T1R_LSBLK_JSON);
+                         HAS_APPLE is yes/no when mounted or probed (esp_probe), "?" otherwise
+esp_select [--why]       picks the single ESP, in this order: T1R_ESP_DEV; the only ESP; the single
+                         non-removable ESP holding EFI/APPLE (Apple's ESP on a dual-boot Mac, unmounted
+                         under Linux); only when none is known to hold it, the one mounted at /boot,
+                         /efi or /boot/efi. Prints "DEVICE MOUNTPOINT" (--why: one sentence on the
+                         choice); returns 1 if none or ambiguous
+esp_apple_facts MP       "EFI_APPLE EMBEDDEDOS MEMBOOT FDRDATA VERSION" yes/no for a mounted tree
+esp_with_ro_mount DEV CMD [ARG...]
+                         mounts an unmounted ESP ro,nosuid,nodev,noexec on a private temp dir, runs
+                         CMD ARG... MOUNTPOINT, unmounts and removes the dir; returns 1 without running
+                         anything when T1R_ESP_PROBE forbids it or the mount fails
+esp_probe DEVICE         esp_apple_facts through esp_with_ro_mount
 esp_mount DEVICE         mounts under $T1R_STATE/esp if not mounted; prints mountpoint
 frst_method              prints the full ACPI path of the T1 reset method (e.g.
                          \_SB.PCI0.XHC1.RHUB.ASOC.FRST) discovered from the ACPI tables in

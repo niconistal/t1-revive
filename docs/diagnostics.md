@@ -71,7 +71,7 @@ diagnostic line. The sections, in order:
 | `system` | distro `PRETTY_NAME`, running kernel, installed kernel package, whether they match, whether headers exist |
 | `model` | DMI product name and its allowlist status |
 | `t1` | `t1-state` (`recovery`, `booted`, `none`) and `t1-config` for a booted T1 |
-| `esp` | one block per EFI System Partition: device path, mounted, `EFI/APPLE` present, `EMBEDDEDOS` present, and for `combined.memboot`, `FDRData`, `version.plist` a yes/no plus size rounded to KB. Names and sizes only; nothing is opened |
+| `esp` | one block per EFI System Partition: device path, mounted, `EFI/APPLE` present, `EMBEDDEDOS` present, and for `combined.memboot`, `FDRData`, `version.plist` a yes/no plus size rounded to KB. A partition that is not mounted (Apple's ESP on a dual-boot Mac) is looked at through a read-only probe mount when the report runs as root (`note: probed-read-only`); otherwise its fields stay `?` (`note: not-mounted-needs-root`). Then `esp-candidates`, `esp-selected` (the device the tool would use, or `ambiguous`) and `esp-selected-why`. Names and sizes only; nothing is opened |
 | `reset` | whether `acpi_call` is loaded and whether the FRST method was found in the ACPI tables (found/not-found, never the path, never a call) |
 | `state` | whether the private state directory exists, the names of step markers, the number of EFI backups |
 | `packages` | versions of the kernel, headers, `acpi_call-dkms`, `dkms`, t1bridge and its fingerprint packages |

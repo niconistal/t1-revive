@@ -132,6 +132,34 @@ documented_sections() {
   assert_contains "$output" "tool-version: $(tr -d '\n' <"$T1R_REPO/VERSION")"
 }
 
+@test "report: an unmounted ESP is looked at through a read-only probe (issue #2)" {
+  # Apple's ESP on a dual-boot Mac is never mounted while Linux runs; without the probe the
+  # bundle could not tell an intact machine from a wiped one.
+  t1r_stub_mount; t1r_stub_apple_data
+  report_load
+  t1r_run cmd_report
+  assert_status 0
+  assert_contains "$output" "esp[0].mounted: no"
+  assert_contains "$output" "esp[0].efi-apple: yes"
+  assert_contains "$output" "esp[0].embeddedos: yes"
+  assert_contains "$output" "esp[0].FDRData: yes"
+  assert_contains "$output" "esp[0].note: probed-read-only"
+  assert_contains "$output" "esp-selected: /dev/sdz1"
+  assert_contains "$output" "esp-selected-why: the-only-EFI-system-partition"
+  refute_contains "$output" "SYNTHETIC-FDR-PLACEHOLDER"
+  assert_contains "$(cat "$T1R_TMP/mount.log")" "-o ro,nosuid,nodev,noexec /dev/sdz1"
+}
+
+@test "report: an unmounted ESP that cannot be probed keeps the '?' and says so" {
+  export T1R_ESP_PROBE=0
+  report_load
+  t1r_run cmd_report
+  assert_status 0
+  assert_contains "$output" "esp[0].efi-apple: ?"
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then assert_contains "$output" "esp[0].note: not-mounted"
+  else assert_contains "$output" "esp[0].note: not-mounted-needs-root"; fi
+}
+
 @test "report: counts the step markers and the EFI backups it finds" {
   report_load
   t1r_step_marker boot

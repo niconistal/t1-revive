@@ -25,8 +25,10 @@ a yes.
 - [ ] Any copy of `EFI/APPLE` from this Mac that exists anywhere has been located and kept.
 - [ ] Recommended, not required: `sudo t1-revive backup --to PATH` ran against a
       destination that is not this disk, and the tool confirmed either that `FDRData` is
-      inside the copy or that there was nothing to copy. Record it as skipped if you skipped
-      it; `regenerate` warns and asks for confirmation in that case, and continues.
+      inside the copy, or exited 1 saying nothing was backed up (a wiped ESP). An exit 4
+      naming a second EFI system partition means the tool would not choose: read the
+      troubleshooting page before going on. Record it as skipped if you skipped it;
+      `regenerate` warns and asks for confirmation in that case, and continues.
 - [ ] The machine is on mains power. Sleep is off for the duration.
 - [ ] Password login works for `sudo`, and, if a lock screen is in use, for the lock screen.
       This must still be true at the end.

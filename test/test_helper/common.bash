@@ -134,6 +134,38 @@ t1r_esp_apple_data() {
   printf '<plist><dict><key>synthetic</key><true/></dict></plist>\n' >"$d/version.plist"
 }
 
+# t1r_stub_mount [SRC]: a fake mount(8)/umount(8) pair on PATH for the read-only ESP probe.
+# mount copies SRC (default: an empty tree) into the target directory, umount empties it,
+# and both append to $T1R_TMP/mount.log. Sets T1R_ESP_PROBE=1 and TMPDIR=$T1R_TMP so the
+# probe never needs root or a block device.
+t1r_stub_mount() {
+  local src=${1:-$T1R_TMP/stub-esp}
+  mkdir -p "$src" "$T1R_TMP/bin"
+  export T1R_STUB_ESP=$src T1R_ESP_PROBE=1 TMPDIR=$T1R_TMP
+  cat >"$T1R_TMP/bin/mount" <<'STUB'
+#!/usr/bin/env bash
+tgt=${*: -1}
+echo "mount $*" >>"$T1R_TMP/mount.log"
+cp -a "$T1R_STUB_ESP"/. "$tgt"/
+STUB
+  cat >"$T1R_TMP/bin/umount" <<'STUB'
+#!/usr/bin/env bash
+echo "umount $*" >>"$T1R_TMP/mount.log"
+find "$1" -mindepth 1 -delete
+STUB
+  chmod +x "$T1R_TMP/bin/mount" "$T1R_TMP/bin/umount"
+  export PATH=$T1R_TMP/bin:$PATH
+}
+
+# t1r_stub_apple_data: a synthetic EFI/APPLE/EMBEDDEDOS in the stub mount's source tree.
+t1r_stub_apple_data() {
+  local d=${T1R_STUB_ESP:?t1r_stub_mount first}/EFI/APPLE/EMBEDDEDOS
+  mkdir -p "$d"
+  printf 'SYNTHETIC-FDR-PLACEHOLDER-NOT-DEVICE-DATA\n' >"$d/FDRData"
+  printf '<plist><dict><key>synthetic</key><true/></dict></plist>\n' >"$d/version.plist"
+  printf 'SYNTHETIC-MEMBOOT-PLACEHOLDER\n' >"$d/combined.memboot"
+}
+
 # t1r_step_marker NAME: the done marker run_step would write for step NAME.
 t1r_step_marker() {
   install -d -m 700 "$T1R_STATE/private/steps"

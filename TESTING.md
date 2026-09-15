@@ -26,8 +26,11 @@ are, and what happens with a report.
    names the documented next step, and files the report under your login after you have
    read it. It is forbidden from running the device-touching commands for you; you type
    those.
-3. **Backup if you still can.** `t1-revive backup --to PATH` runs before anything touches
-   the device, and copies `EFI/APPLE` off the disk if any of it is still there. The
+3. **Backup if you still can.** `sudo t1-revive backup --to PATH` runs before anything touches
+   the device, and copies `EFI/APPLE` off the disk if any of it is still there. It exits 0 only
+   when it wrote and checked a tar: exit 1 means a wiped ESP, exit 4 means it found a second
+   EFI system partition and would not choose (a Mac that dual-boots macOS; see
+   docs/troubleshooting.md). The
    destination does not have to be a stick: another machine, a phone, a cloud folder. It is
    recommended, not required; `regenerate` warns and asks for confirmation if no backup was
    taken, and continues. Keep the copy encrypted. A reinstall is exactly the event that

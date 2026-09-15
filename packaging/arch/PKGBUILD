@@ -15,8 +15,8 @@
 
 pkgname=t1-revive
 # _relver is the git tag without its v and must equal VERSION; pkgver may not contain '-'.
-_relver=0.1.0
-pkgver=0.1.0
+_relver=0.1.1
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="Regenerate the Apple T1 (iBridge) firmware data of a Touch Bar MacBook Pro from Linux"
 arch=('x86_64')
@@ -52,8 +52,9 @@ done
 _ref() { local v=${1^^}; v=${v//-/_}_$2; printf '%s' "${!v-}"; }
 
 # The project tarball for tag v$_relver (sha256 of the GitHub archive); update at every tag.
+# 'SKIP' between the version bump and the tag; pinned in a follow-up commit once the tag exists.
 source=("$_srcdir.tar.gz::$url/archive/refs/tags/v$_relver.tar.gz")
-sha256sums=('50b7f7b862af56e2930d2c1b641da5b8539bf97ed9614809cffff5eb1fbb9872')
+sha256sums=('SKIP')
 # One upstream commit tarball per vendored component, so build() never touches the network.
 for _c in $T1R_VENDOR_ORDER; do
 	source+=("$_c-$(_ref "$_c" BASE_COMMIT).tar.gz::$(_ref "$_c" UPSTREAM_URL)/archive/$(_ref "$_c" BASE_COMMIT).tar.gz")

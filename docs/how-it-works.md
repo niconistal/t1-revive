@@ -61,7 +61,10 @@ EmbeddedOS; it is the restore leaving the chip where it left it. Rehearsal: 2 mi
 The T1 has to be back in recovery for the personalize step. The tool writes the ACPI method path
 discovered from this machine's ACPI tables (on the tested model it ends in `ASOC.FRST`) to
 `/proc/acpi/call`, provided by `acpi_call`. It refuses to run if the method is not found in
-the tables; the path is never assumed.
+the tables; the path is never assumed. The method is located by name, under an xHCI node,
+never by device id: on a MacBookPro14,2 (reported in issue #2) `FRST` lives in an SSDT and the
+device id the kernel names (`APP7777`) appears in no static table at all, so a lookup by device
+id would find nothing there.
 
 - Sends: one ACPI method call. No network.
 - Receives: the method's return value; `0x0` in every run so far.

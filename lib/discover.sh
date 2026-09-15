@@ -63,13 +63,68 @@ walk(json.load(sys.stdin))' "$T1R_ESP_PARTTYPE" 2>/dev/null
   fi
 }
 
-# esp_candidates: "DEVICE MOUNTPOINT HAS_APPLE" per ESP. HAS_APPLE is yes/no when mounted
-# (EFI/APPLE present under the mountpoint), "?" when not mounted. Never mounts anything.
+# T1R_ESP_PROBE: how an ESP that is not mounted is looked at. "auto" (default) mounts it
+# read-only on a private temporary directory, as root, when the device really is a block
+# device; "0" never mounts anything (the answer stays "?"); "1" always tries (the bats suite,
+# with a stub mount(8) on PATH). A dual-boot Mac keeps Apple's ESP unmounted while Linux
+# runs, so without the probe the partition that matters most is the one the tool cannot see.
+: "${T1R_ESP_PROBE:=auto}"
+export T1R_ESP_PROBE
+
+# esp_apple_facts MOUNTPOINT: "EFI_APPLE EMBEDDEDOS MEMBOOT FDRDATA VERSION", yes/no each,
+# for a mounted ESP. Reads directory entries only; never the files.
+esp_apple_facts() {
+  local mp=${1:?esp_apple_facts MOUNTPOINT} eos a=no e=no m=no f=no v=no
+  eos=$mp/EFI/APPLE/EMBEDDEDOS
+  [[ -d "$mp/EFI/APPLE" ]] && a=yes
+  [[ -d "$eos" ]] && e=yes
+  [[ -e "$eos/combined.memboot" ]] && m=yes
+  [[ -e "$eos/FDRData" ]] && f=yes
+  [[ -e "$eos/version.plist" ]] && v=yes
+  printf '%s %s %s %s %s\n' "$a" "$e" "$m" "$f" "$v"
+}
+
+# esp_with_ro_mount DEVICE CMD [ARG...]: mount an unmounted ESP read-only on a private
+# temporary directory, run CMD with the mountpoint appended to ARGs, unmount. Nothing is ever
+# written: the mount is ro,nosuid,nodev,noexec and the directory is removed afterwards.
+# Returns 1 (and runs nothing) when probing is off (T1R_ESP_PROBE=0), when not root on a real
+# block device, or when the mount fails. CMD's own status is returned otherwise.
+esp_with_ro_mount() {
+  local dev=${1:?esp_with_ro_mount DEVICE} mp rc
+  shift
+  [[ $# -ge 1 ]] || return 2
+  case "$T1R_ESP_PROBE" in
+    0) return 1;;
+    1) ;;
+    *) [[ "${EUID:-$(id -u)}" = 0 ]] || return 1
+       [[ -b "$dev" ]] || return 1;;
+  esac
+  command -v mount >/dev/null 2>&1 || return 1
+  mp=$(mktemp -d "${TMPDIR:-/tmp}/t1-revive-probe.XXXXXX" 2>/dev/null) || return 1
+  if ! mount -t vfat -o ro,nosuid,nodev,noexec "$dev" "$mp" 2>/dev/null; then
+    rmdir "$mp" 2>/dev/null
+    return 1
+  fi
+  "$@" "$mp"; rc=$?
+  umount "$mp" 2>/dev/null || warn "could not unmount the read-only probe of $dev at $mp"
+  rmdir "$mp" 2>/dev/null || true
+  return "$rc"
+}
+
+# esp_probe DEVICE: esp_apple_facts for an ESP that is not mounted, through a read-only probe
+# mount. Prints nothing and returns 1 when the partition cannot be looked at.
+esp_probe() { esp_with_ro_mount "${1:?esp_probe DEVICE}" esp_apple_facts; }
+
+# esp_candidates: "DEVICE MOUNTPOINT HAS_APPLE" per ESP. HAS_APPLE is yes/no when the
+# partition is mounted (EFI/APPLE present under the mountpoint) or when a read-only probe
+# could look at it (see T1R_ESP_PROBE), "?" otherwise. Never mounts anything read-write.
 esp_candidates() {
-  local dev mp has
+  local dev mp has facts
   while read -r dev mp; do
     [[ -n "$dev" ]] || continue
-    if [[ "$mp" = "-" ]] || [[ -z "$mp" ]]; then has='?'
+    if [[ "$mp" = "-" ]] || [[ -z "$mp" ]]; then
+      if facts=$(esp_probe "$dev" 2>/dev/null) && [[ -n "$facts" ]]; then has=${facts%% *}; else has='?'; fi
+    elif [[ ! -r "$mp" ]] || [[ ! -x "$mp" ]]; then has='?'   # mounted, but not for this user
     elif [[ -d "$mp/EFI/APPLE" ]]; then has=yes
     else has=no; fi
     printf '%s %s %s\n' "$dev" "${mp:--}" "$has"
@@ -77,38 +132,57 @@ esp_candidates() {
   return 0
 }
 
-# esp_select: the one ESP to use, as "DEVICE MOUNTPOINT". Preference: the single ESP holding
-# EFI/APPLE, else the one mounted at /boot, /efi or /boot/efi. Returns 1 if none or ambiguous.
+# esp_select [--why]: the one ESP to use, as "DEVICE MOUNTPOINT" (with --why, one sentence
+# saying how it was chosen instead). Preference, in order: the device pinned by T1R_ESP_DEV;
+# the only ESP; the single ESP on a non-removable disk that holds EFI/APPLE (the Mac's own
+# ESP, whatever Linux mounted where); only when no ESP is known to hold EFI/APPLE, the one
+# mounted at /boot, /efi or /boot/efi (a wiped single-ESP install, or an installer
+# environment). Returns 1 if none or ambiguous.
+#
+# The EFI/APPLE rule must come first: a Linux install next to macOS leaves Apple's ESP
+# unmounted and mounts its own at /boot, and picking /boot there means backup finds nothing to
+# save on a machine whose firmware is intact, while stage would write next to the wrong
+# bootloader.
 esp_select() {
   local -a lines=()
-  local l n dev mp has pick='' apple=0 std=0
+  local why=0 l n dev mp has pick='' apple=0 std=0
+  [[ "${1:-}" = --why ]] && why=1
   mapfile -t lines < <(esp_candidates)
-  # An operator can pin the ESP in t1-revive.conf (T1R_ESP_DEV=/dev/...) when two look alike.
   if [[ -n "${T1R_ESP_DEV:-}" ]]; then
     for l in "${lines[@]}"; do
       read -r dev mp _ <<<"$l"
-      [[ "$dev" = "$T1R_ESP_DEV" ]] && { printf '%s %s\n' "$dev" "$mp"; return 0; }
+      if [[ "$dev" = "$T1R_ESP_DEV" ]]; then
+        [[ "$why" = 1 ]] && { printf 'pinned by T1R_ESP_DEV in t1-revive.conf\n'; return 0; }
+        printf '%s %s\n' "$dev" "$mp"; return 0
+      fi
     done
     warn "T1R_ESP_DEV=$T1R_ESP_DEV is not an EFI system partition on this machine; ignoring it"
   fi
   n=${#lines[@]}
   [[ "$n" -gt 0 ]] || return 1
-  if [[ "$n" = 1 ]]; then read -r dev mp _ <<<"${lines[0]}"; printf '%s %s\n' "$dev" "$mp"; return 0; fi
-  # The ESP the machine boots from wins: the one mounted at /boot, /efi or /boot/efi. Only when
-  # no ESP is mounted there (an installer environment) does an EFI/APPLE folder break the tie,
-  # and only on a non-removable disk: a backup stick holding EFI/APPLE must never be staged.
-  for l in "${lines[@]}"; do
-    read -r dev mp has <<<"$l"
-    case "$mp" in /boot|/efi|/boot/efi) std=$((std + 1)); pick="$dev $mp";; *) ;; esac
-  done
-  [[ "$std" = 1 ]] && { printf '%s\n' "$pick"; return 0; }
-  [[ "$std" -gt 1 ]] && return 1
-  pick=
+  if [[ "$n" = 1 ]]; then
+    read -r dev mp _ <<<"${lines[0]}"
+    [[ "$why" = 1 ]] && { printf 'the only EFI system partition\n'; return 0; }
+    printf '%s %s\n' "$dev" "$mp"; return 0
+  fi
   for l in "${lines[@]}"; do
     read -r dev mp has <<<"$l"
     if [[ "$has" = yes ]] && ! esp_removable "$dev"; then apple=$((apple + 1)); pick="$dev $mp"; fi
   done
-  [[ "$apple" = 1 ]] && { printf '%s\n' "$pick"; return 0; }
+  if [[ "$apple" = 1 ]]; then
+    [[ "$why" = 1 ]] && { printf 'the only EFI system partition on an internal disk that holds EFI/APPLE\n'; return 0; }
+    printf '%s\n' "$pick"; return 0
+  fi
+  [[ "$apple" -gt 1 ]] && return 1
+  pick=
+  for l in "${lines[@]}"; do
+    read -r dev mp has <<<"$l"
+    case "$mp" in /boot|/efi|/boot/efi) std=$((std + 1)); pick="$dev $mp";; *) ;; esac
+  done
+  if [[ "$std" = 1 ]]; then
+    [[ "$why" = 1 ]] && { printf 'mounted at %s, and no EFI system partition is known to hold EFI/APPLE\n' "${pick#* }"; return 0; }
+    printf '%s\n' "$pick"; return 0
+  fi
   return 1
 }
 

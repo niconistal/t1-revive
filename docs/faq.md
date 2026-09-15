@@ -42,8 +42,10 @@ is; with that copy you may not need regeneration at all.
 
 **Can I run it if my Touch Bar works?** There is no need, and the tool refuses: a T1 at
 `05ac:8600` with the `EMBEDDEDOS` folder present has nothing to regenerate. What you should
-do instead is copy `EFI/APPLE` off the disk today, with `t1-revive backup --to PATH` or by
-hand.
+do instead is copy `EFI/APPLE` off the disk today, with `sudo t1-revive backup --to PATH` or by
+hand. `backup` exits 0 only when it wrote a tar and checked it; on a Mac that dual-boots
+macOS it looks inside the unmounted Apple ESP itself (see the troubleshooting page, "Two EFI
+system partitions").
 
 **Why not just reinstall macOS?** You can. A macOS restore through a complete first boot
 regenerates the same data, and if you have macOS or a second Mac and the patience, that path

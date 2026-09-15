@@ -53,9 +53,29 @@ page, so a browser test proves nothing either way.
 **`system usbmuxd is running`.** The passes start their own patched usbmuxd and refuse to
 run beside the system one. `sudo systemctl disable --now usbmuxd`, rerun.
 
-**`ESP ambiguous`, exit 4.** Two partitions of type EFI System were found and neither holds
-`EFI/APPLE` or `/boot` or `/efi`. The tool will not guess. Set the device in
-`/etc/t1-revive/t1-revive.conf` and rerun; `sudo t1-revive status` lists the candidates.
+**`ESP ambiguous`, exit 4.** Two partitions of type EFI System were found and neither stands
+out: none of them is the single internal one holding `EFI/APPLE`, and none is the single one
+mounted at `/boot` or `/efi`. The tool will not guess. Put `T1R_ESP_DEV=/dev/...` in
+`/etc/t1-revive/t1-revive.conf` and rerun; `sudo t1-revive status` lists the candidates, what
+each holds, and which one would be chosen.
+
+**Two EFI system partitions (Linux installed next to macOS).** Apple's ESP stays unmounted
+while Linux runs and the distro mounts its own at `/boot`. As root, `status`, `preflight`,
+`report` and `backup` look inside the unmounted one through a read-only mount and prefer the
+internal partition that holds `EFI/APPLE`, whatever is mounted where. Run them with `sudo`:
+as a normal user the unmounted partition shows as `?` and the one at `/boot` is chosen. On a
+layout where *neither* ESP holds `EFI/APPLE` the one at `/boot` is chosen for staging; that
+layout has not been tested (the tested machine has one ESP), so pin Apple's partition with
+`T1R_ESP_DEV` if you know which one it is.
+
+**`backup`: "nothing was backed up", exit 1.** The chosen ESP has no `EFI/APPLE` and it is the
+only internal one: a wiped ESP. Nothing was saved, and the exit code says so; `regenerate`
+does not need this command to have succeeded on a wiped machine.
+
+**`backup`: "this machine has another EFI system partition", exit 4.** The chosen ESP is empty
+but a second internal ESP exists. The tool refuses rather than report a backup of nothing.
+`sudo t1-revive status` shows what each partition holds; if the other one is Apple's, pin it
+with `T1R_ESP_DEV` and run `backup` again.
 
 **`FRST method not found`, exit 4.** The T1 reset method is discovered from this machine's
 ACPI tables, never assumed. Not found means either the tables could not be read or this

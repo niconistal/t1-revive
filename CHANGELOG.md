@@ -4,6 +4,36 @@ Dates are the days the work was proven on hardware, taken from the maintainer's 
 engineering notebook. Everything before the first public version happened on one
 MacBookPro14,3.
 
+## 0.1.1 (2026-09-15)
+
+Two ESPs on one Mac (issue #2, reported by @bjhinkle from a MacBookPro14,2 that dual-boots
+macOS, firmware intact). A Linux install next to macOS leaves Apple's ESP unmounted and mounts
+its own at `/boot`; the tool preferred the mounted one, so on such a machine:
+
+- `backup` picked the Linux ESP, found no `EFI/APPLE` there, printed "nothing to back up (a
+  wiped ESP)" and exited 0 on a machine whose firmware was completely intact; `regenerate`
+  and `stage` would have targeted the same wrong partition
+- `status` and `report` could not look inside the unmounted Apple ESP, so the bundle of an
+  intact machine was indistinguishable from a wiped one
+
+Fixed:
+
+- `esp_select` now prefers the single internal ESP that holds `EFI/APPLE` and falls back to
+  the one at `/boot`, `/efi` or `/boot/efi` only when none is known to hold it (the header
+  comment already said so; the code did the opposite). A stick with `EFI/APPLE` still never wins
+- unmounted ESPs are looked at through a read-only probe mount (`ro,nosuid,nodev,noexec` on a
+  private temporary directory, as root, removed afterwards) by `status`, `preflight`, `report`,
+  `backup` and the regeneration; `T1R_ESP_PROBE=0` turns it off
+- `backup` never exits 0 without a tar: a wiped single ESP exits 1 with "nothing was backed
+  up"; an empty ESP next to another internal ESP is refused (exit 4) with the other partition
+  named and the `T1R_ESP_DEV` pin explained
+- `status` and `preflight` say which ESP was chosen and why, and list the ones not chosen;
+  `report` gains `esp[n].note: probed-read-only`, `esp-selected` and `esp-selected-why`
+- README: the 14,2 is listed as the intact-ESP control case (status and report only, no
+  regeneration); docs cover dual-boot layouts and the pin; how-it-works notes that on the 14,2
+  `FRST` lives in an SSDT and the device id appears in no static table, which is why the
+  method is found by name under the xHCI path and never by device id
+
 ## 0.1.0 (2026-09-14)
 
 First public version.
