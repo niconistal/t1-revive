@@ -27,6 +27,12 @@ Fixed:
 - `backup` never exits 0 without a tar: a wiped single ESP exits 1 with "nothing was backed
   up"; an empty ESP next to another internal ESP is refused (exit 4) with the other partition
   named and the `T1R_ESP_DEV` pin explained
+- an ESP the tool mounted itself is unmounted at exit again: `esp_mount` runs inside a command
+  substitution, so the variable `esp_release` relied on never reached the exiting shell and the
+  partition stayed mounted read-write under the state directory (found on a loop-device ESP
+  while testing this release; invisible on the tested machine, whose ESP is at `/boot`)
+- a dry run of `backup` on an unmounted ESP looks through the read-only probe instead of
+  mistaking the empty mount directory for a wiped ESP
 - `status` and `preflight` say which ESP was chosen and why, and list the ones not chosen;
   `report` gains `esp[n].note: probed-read-only`, `esp-selected` and `esp-selected-why`
 - README: the 14,2 is listed as the intact-ESP control case (status and report only, no

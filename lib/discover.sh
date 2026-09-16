@@ -212,10 +212,15 @@ esp_mount() {
 }
 
 # esp_release: unmount an ESP that esp_mount mounted itself (called from log_close at exit).
+# esp_mount usually runs inside a command substitution, so T1R_ESP_MOUNTED is set in a subshell
+# and never reaches the process that exits; the mount directory under $T1R_STATE is the tool's
+# own, so whatever is mounted there is ours to release, variable or not.
 esp_release() {
-  [[ -n "${T1R_ESP_MOUNTED:-}" ]] || return 0
-  umount "$T1R_ESP_MOUNTED" 2>/dev/null || true
-  T1R_ESP_MOUNTED=
+  local mp=$T1R_STATE/esp
+  [[ -n "${T1R_ESP_MOUNTED:-}" ]] && { umount "$T1R_ESP_MOUNTED" 2>/dev/null || true; T1R_ESP_MOUNTED=; }
+  if command -v findmnt >/dev/null 2>&1 && findmnt -rno TARGET "$mp" >/dev/null 2>&1; then
+    umount "$mp" 2>/dev/null || warn "could not unmount the ESP at $mp; run: umount $mp"
+  fi
   return 0
 }
 

@@ -128,6 +128,17 @@ backup_load() {
   t1r_esp_unchanged
 }
 
+@test "backup: a dry run on an unmounted ESP looks through the read-only probe instead of refusing" {
+  # A dry run mounts nothing, so the mountpoint it would use is an empty directory; the probe
+  # is what tells it the device holds EFI/APPLE.
+  t1r_stub_mount; t1r_stub_apple_data; t1r_use_lsblk one-esp; backup_load
+  run cmd_backup
+  assert_status 0
+  assert_contains "$output" "looked at read-only"
+  assert_contains "$output" "(dry-run) tar -C"
+  assert_eq "" "$(find "$T1R_STATE" -maxdepth 1 -name 'efi-backup-*' || true)"
+}
+
 # --- the dry run ------------------------------------------------------------------------------
 @test "backup: a dry run says what it would do and writes no tar" {
   t1r_fake_esp; t1r_esp_apple_data; t1r_esp_snapshot; backup_load

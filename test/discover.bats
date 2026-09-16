@@ -198,6 +198,21 @@ setup() { t1r_env; }
   assert_contains "$output" "/dev/sdz1"
 }
 
+@test "esp_release: unmounts the tool's own mount directory even when esp_mount ran in a subshell" {
+  # esp_mount is called as $(esp_mount ...), so T1R_ESP_MOUNTED never reaches the exiting shell.
+  t1r_stub_mount; t1r_load discover; t1r_need esp_release
+  t1r_stub_bin findmnt <<STUB
+#!/usr/bin/env bash
+[[ "\${*: -1}" = "$T1R_STATE/esp" ]] && { echo "$T1R_STATE/esp"; exit 0; }
+exit 1
+STUB
+  mkdir -p "$T1R_STATE/esp"
+  unset T1R_ESP_MOUNTED
+  run esp_release
+  assert_status 0
+  assert_contains "$(cat "$T1R_TMP/mount.log")" "umount $T1R_STATE/esp"
+}
+
 @test "esp_select: no ESP -> returns 1" {
   t1r_use_lsblk no-esp; t1r_load discover; t1r_need esp_select
   run esp_select

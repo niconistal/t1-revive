@@ -11,7 +11,7 @@
 # shellcheck shell=bash
 
 cmd_backup() {
-  local to='' esp dev mp stamp tar sum short n copy others o internal=''
+  local to='' esp dev mp stamp tar sum short n copy others o internal='' apple=0 facts
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --to) [[ $# -ge 2 ]] || { echo "usage: t1-revive backup [--to DIR]" >&2; return 2; }; to=$2; shift;;
@@ -33,7 +33,11 @@ cmd_backup() {
   mp=$(esp_mount "$dev") || die 1 "cannot mount the ESP $dev"
   note "ESP: $dev at $mp"
 
-  if [[ ! -d "$mp/EFI/APPLE" ]]; then
+  if [[ -d "$mp/EFI/APPLE" ]]; then apple=1
+  elif [[ "$T1R_DRY_RUN" = 1 ]] && facts=$(esp_probe "$dev" 2>/dev/null) && [[ "${facts%% *}" = yes ]]; then
+    apple=2   # a dry run mounts nothing rw; the read-only probe saw EFI/APPLE on the device
+  fi
+  if [[ "$apple" = 0 ]]; then
     # Nothing here. That is only "a wiped ESP" when this is the machine's only internal ESP; a
     # Linux install next to macOS has two, and a clean exit here would tell the owner of an
     # intact machine that there is nothing to save. So: refuse when another internal ESP
@@ -50,9 +54,14 @@ cmd_backup() {
     return 1
   fi
 
-  n=$(find "$mp/EFI/APPLE" -type f 2>/dev/null | wc -l)
-  note "EFI/APPLE holds $n files"
-  [[ -d "$mp/EFI/APPLE/EMBEDDEDOS" ]] && note "EMBEDDEDOS: $(dir_names "$mp/EFI/APPLE/EMBEDDEDOS")"
+  if [[ "$apple" = 2 ]]; then
+    n='?'
+    note "EFI/APPLE present on $dev (looked at read-only; a dry run does not mount it)"
+  else
+    n=$(find "$mp/EFI/APPLE" -type f 2>/dev/null | wc -l)
+    note "EFI/APPLE holds $n files"
+    [[ -d "$mp/EFI/APPLE/EMBEDDEDOS" ]] && note "EMBEDDEDOS: $(dir_names "$mp/EFI/APPLE/EMBEDDEDOS")"
+  fi
   stamp=$(date +%Y%m%d-%H%M%S)
   tar=$T1R_STATE/efi-backup-$stamp.tar
   if [[ "$T1R_DRY_RUN" = 1 ]]; then
