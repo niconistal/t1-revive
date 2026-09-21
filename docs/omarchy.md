@@ -162,3 +162,42 @@ of anything. So the order that works in one sitting is: regenerate, install t1br
 A plain reboot works just as well. The firmware loads the staged files at boot and
 t1bridge takes the T1 from there. Use whichever you prefer; nothing downstream depends on
 the choice.
+
+## 5. Volume and media buttons on the Touch Bar
+
+t1bridge's built-in renderer draws volume, mute and media buttons only when a desktop
+provider is set. The core package ships none, by design: its README leaves audio, media and
+HUDs to distribution integrations. Without one the bar keeps Escape, the hardware controls
+and the F-keys, with no volume.
+
+[`contrib/omarchy/t1bridge-omarchy-provider.sh`](../contrib/omarchy/t1bridge-omarchy-provider.sh)
+implements t1bridge's
+[desktop provider v1](https://github.com/standardagents/t1bridge/blob/main/docs/interfaces.md#desktop-provider-v1)
+contract with Omarchy's own tools:
+
+- Volume and mute move the same sink as Omarchy's volume keys (`omarchy-audio-output-sink`,
+  `pactl`) and show Omarchy's OSD.
+- Previous, play/pause and next go through `omarchy-shell media`. They appear only while an
+  MPRIS player is running.
+- Display and keyboard brightness changes show Omarchy's OSD.
+- The bar goes dark while Hyprland has the displays off, such as after the lock screen
+  blanks them. The Touch Bar does not wake the displays.
+
+It runs as you, never as root. Install it where your user can execute it and point the
+Touch Bar user service at it:
+
+```sh
+install -Dm755 contrib/omarchy/t1bridge-omarchy-provider.sh ~/.local/bin/t1bridge-omarchy-provider
+mkdir -p ~/.config/systemd/user/t1-touchbar.service.d
+printf '[Service]\nEnvironment=T1BRIDGE_DESKTOP_PROVIDER=%%h/.local/bin/t1bridge-omarchy-provider\n' \
+  > ~/.config/systemd/user/t1-touchbar.service.d/omarchy-provider.conf
+systemctl --user daemon-reload
+systemctl --user restart t1-touchbar.service
+```
+
+`%h` is systemd's specifier for your home directory; the value must be an absolute path.
+To check the provider by hand, `~/.local/bin/t1bridge-omarchy-provider v1 status` prints
+one line such as `T1BRIDGE-DESKTOP 1 29 50 0 1`: capabilities, volume, muted, display on.
+To remove it, delete the drop-in and restart the service.
+
+Tested on one MacBookPro13,3, Omarchy 4.0.4, t1bridge 0.1.12, kernel 7.2.5.

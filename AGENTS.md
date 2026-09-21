@@ -61,6 +61,7 @@ tools/                   scan-identifiers.sh, ACPI/plist/pbzx helpers (python), 
 vendor/                  build recipes and pinned refs for the patched libimobiledevice stack; build.sh at root
 packaging/arch/PKGBUILD  AUR recipe (builds vendor/ from pinned tags; nothing from Apple at build time)
 contrib/stick/           install-stick files: README.txt, install-nvram.sh, nvram template
+contrib/omarchy/         t1bridge desktop provider for Omarchy (Touch Bar volume, media, OSD); see docs/omarchy.md
 skills/t1-revive-tester/SKILL.md   the tester-facing agent skill
 test/                    bats tests + fixtures; test/fixtures/** holds synthetic sysfs/lsblk/DMI/ACPI
 docs/                    how-it-works, threat-model, troubleshooting, diagnostics, hardware-validation, omarchy, firmware, install-stick, assets/ (README visuals; regenerate with docs/assets/gen.py)
