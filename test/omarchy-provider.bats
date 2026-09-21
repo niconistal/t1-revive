@@ -14,17 +14,18 @@ stub() {
 
 setup() {
   t1r_env
-  command -v jq >/dev/null || skip "jq not installed"
   mkdir -p "$T1R_TMP/stubs"
   : >"$T1R_TMP/calls"
   export PATH="$T1R_TMP/stubs:$PATH"
   stub omarchy-audio-output-sink 'echo synthetic_sink'
-  stub pactl 'case $1 in
-    get-sink-volume) echo "Volume: front-left: 32768 /  ${VOL:-50}% / -18.06 dB" ;;
-    get-sink-mute) echo "Mute: ${MUTE:-no}" ;;
-  esac'
-  stub busctl 'echo "${BUS_NAMES:-org.freedesktop.DBus 1 dbus-daemon}"'
-  stub hyprctl 'if [[ -n ${DPMS:-} ]]; then echo "[{\"dpmsStatus\": $DPMS}]"; else exit 1; fi'
+  stub pactl 'if [[ $1 == list ]]; then
+    printf "Sink #1\n\tName: other_sink\n\tMute: yes\n\tVolume: front-left: 0 /   7%% / -inf dB\n"
+    printf "Sink #2\n\tName: synthetic_sink\n\tMute: %s\n" "${MUTE:-no}"
+    printf "\tVolume: front-left: 32768 /  %s%% / -18.06 dB\n" "${VOL:-50}"
+  fi'
+  stub busctl 'echo "as 2 \"org.freedesktop.DBus\" \"${BUS_NAME:-:1.1}\""'
+  # DPMS is a space-separated list of per-monitor states; unset means Hyprland is not running.
+  stub hyprctl 'if [[ -n ${DPMS:-} ]]; then for d in $DPMS; do printf "Monitor X:\n\tdpmsStatus: %s\n" "$d"; done; else exit 1; fi'
   stub omarchy-osd ':'
   stub omarchy-shell ':'
   stub notify-send ':'
@@ -39,14 +40,19 @@ provider() { run bash "$T1R_REPO/$PROVIDER" "$@"; }
 }
 
 @test "status: media and display bits, muted, volume clamped to 100" {
-  VOL=150 MUTE=yes DPMS=true BUS_NAMES="org.mpris.MediaPlayer2.synthetic 1 player" provider v1 status
+  VOL=150 MUTE=yes DPMS=1 BUS_NAME=org.mpris.MediaPlayer2.synthetic provider v1 status
   assert_status 0
   [[ $output == "T1BRIDGE-DESKTOP 1 31 100 1 1" ]]
 }
 
 @test "status: displays off reports display 0" {
-  DPMS=false provider v1 status
+  DPMS=0 provider v1 status
   [[ $output == "T1BRIDGE-DESKTOP 1 29 50 0 0" ]]
+}
+
+@test "status: display is on while any monitor is on, and reads the selected sink only" {
+  DPMS="0 1" MUTE=yes VOL=30 provider v1 status
+  [[ $output == "T1BRIDGE-DESKTOP 1 29 30 1 1" ]]
 }
 
 @test "status: no sink withdraws audio with dash fields" {
@@ -56,7 +62,7 @@ provider() { run bash "$T1R_REPO/$PROVIDER" "$@"; }
 }
 
 @test "status record fits the 128-byte stdout limit" {
-  VOL=100 MUTE=yes DPMS=true BUS_NAMES="org.mpris.MediaPlayer2.x" provider v1 status
+  VOL=100 MUTE=yes DPMS=1 BUS_NAME=org.mpris.MediaPlayer2.x provider v1 status
   ((${#output} <= 128))
 }
 
