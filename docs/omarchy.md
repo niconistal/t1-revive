@@ -200,4 +200,12 @@ To check the provider by hand, `~/.local/bin/t1bridge-omarchy-provider v1 status
 one line such as `T1BRIDGE-DESKTOP 1 29 50 0 1`: capabilities, volume, muted, display on.
 To remove it, delete the drop-in and restart the service.
 
-Tested on one MacBookPro13,3, Omarchy 4.0.4, t1bridge 0.1.12, kernel 7.2.5.
+The dark-bar-with-the-displays behaviour needs t1bridge 0.1.10 or newer, the first release
+whose built-in renderer understands display power. An older release is not harmed by it:
+0.1.9 accepts the capability and ignores it, checked against a running 0.1.9 renderer, so the
+bar simply keeps its controls. If some renderer ever does object to the bit, adding
+`Environment=T1BRIDGE_OMARCHY_DISPLAY_POWER=0` to the same drop-in withdraws it and leaves
+volume, media and the OSDs untouched.
+
+Tested on one MacBookPro13,3, Omarchy 4.0.4, t1bridge 0.1.12, kernel 7.2.5, and one
+MacBookPro14,2, Omarchy 4.0.4, t1bridge 0.1.12, kernel 7.2.5-3-omarchy.
