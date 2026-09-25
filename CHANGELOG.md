@@ -4,6 +4,31 @@ Dates are the days the work was proven on hardware, taken from the maintainer's 
 engineering notebook. Everything before the first public version happened on one
 MacBookPro14,3.
 
+## Unreleased
+
+- **A desktop provider for Omarchy.** t1bridge's built-in renderer draws volume, mute and media
+  buttons only when a desktop provider is configured, and the core package ships none by design,
+  so the bar arrived with Escape, the hardware controls and the F-keys and no volume.
+  `contrib/omarchy/t1bridge-omarchy-provider.sh` (PR #11, @mbriney) implements desktop provider
+  v1 with Omarchy's own tools: the sink Omarchy's volume keys move, resolved through
+  `omarchy-audio-output-sink`; Omarchy's OSD for volume and brightness; `omarchy-shell media` for
+  previous, play/pause and next, advertised only while an MPRIS player is actually running; and a
+  dark bar while Hyprland has the displays off. No `jq`, no `playerctl`, ~33 ms per status poll
+  against a 500 ms deadline. Setup is section 5 of `docs/omarchy.md`
+- **Review fixes on that provider**, from @wdwy90's review on a MacBookPro14,2 and a run on a
+  MacBookPro14,3 against a t1bridge 0.1.9 renderer. `toggle-mute` goes through
+  `omarchy-audio-output-volume`, so the Touch Bar shares Omarchy's one 250 ms mute debounce
+  window instead of double-firing a tap. `show-display-brightness` asks
+  `omarchy-brightness-display` for the focused display instead of taking the first
+  `/sys/class/backlight` entry, which with an external monitor focused reported the internal
+  panel's 9% where the focused output was at 76%. `hyprctl` is asked through an explicit
+  instance, because the instance signature the user service inherits dies when Hyprland restarts
+  and the display capability then vanished from a running renderer. The display capability is
+  switchable for a renderer that predates it, which 0.1.9 turned out not to need: it accepts the
+  bit and ignores it. Sysfs levels are read through `T1R_SYSFS`, behind a readability test so an
+  unmatched glob cannot reach the renderer's stderr and a numeric test so a value cannot reach
+  arithmetic
+
 ## 0.1.3 (2026-09-19)
 
 A second MacBookPro13,2 (issue #10, @ncolina), on a host that had carried an older Touch Bar
