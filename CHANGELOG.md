@@ -4,6 +4,26 @@ Dates are the days the work was proven on hardware, taken from the maintainer's 
 engineering notebook. Everything before the first public version happened on one
 MacBookPro14,3.
 
+## Unreleased
+
+Three gaps in how the restore steps and staging guard their outputs, found in an outside source
+review of t1-revive. None of them was hit in a reported run; each is a way a failed or
+interrupted attempt could have passed for a good one.
+
+- **A replayed FDR store that is not the provisioned one now stops personalize, always.** It
+  was printed as `NO` and the step went on unless `--strict` was given. The image and ticket
+  of such a run are moved aside so neither boot nor stage can use them. A store that differs
+  only in bytes but parses to the same plist still passes
+- **Each restore step sets aside what an earlier attempt left.** Provision and personalize
+  used to gate on files being present, so a file from a failed earlier attempt could satisfy
+  them. Before the restore starts, those files now move to `private/attempts/<stamp>-<step>/`
+  (0700, nothing deleted), and provision also sets aside everything personalize made from the
+  previous store
+- **Staging writes all three files before renaming any.** An interruption while writing now
+  leaves the old set whole. FAT cannot swap three files at once, so the window between the
+  renames remains; `combined.memboot` is renamed last, `status` and `stage` report the
+  temporary files an interrupted stage leaves, and rerunning `stage` completes the set
+
 ## 0.1.4 (2026-10-04)
 
 Volume, mute, media and the OSD on the Touch Bar under Omarchy, contributed by @mbriney and

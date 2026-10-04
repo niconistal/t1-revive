@@ -135,3 +135,27 @@ stage_load() {
   assert_status 0
   assert_eq "sourced-ok" "$output"
 }
+
+# --- two-phase write ---------------------------------------------------------------------------
+@test "stage: a dry run writes all three temporary files before the first rename, memboot last" {
+  t1r_fake_esp; t1r_esp_snapshot; t1r_step_marker boot; stage_load
+  t1r_run cmd_stage
+  assert_status 0
+  local lines last_install first_mv last_mv
+  lines=$(printf '%s\n' "$output" | grep -nE '\(dry\) (install -m 644|mv -f)')
+  last_install=$(printf '%s\n' "$lines" | grep 'install -m 644' | tail -1 | cut -d: -f1)
+  first_mv=$(printf '%s\n' "$lines" | grep 'mv -f' | head -1 | cut -d: -f1)
+  last_mv=$(printf '%s\n' "$lines" | grep 'mv -f' | tail -1)
+  [ -n "$last_install" ] && [ -n "$first_mv" ]
+  [ "$last_install" -lt "$first_mv" ] || { echo "a rename came before the last write" >&2; return 1; }
+  [[ $last_mv == *"/combined.memboot" ]] || { echo "combined.memboot is not renamed last: $last_mv" >&2; return 1; }
+  t1r_esp_unchanged
+}
+
+@test "stage_leftovers: names the temporary files an interrupted stage left, and nothing otherwise" {
+  stage_load
+  local esp=$T1R_TMP/eos; mkdir -p "$esp"
+  [ -z "$(stage_leftovers "$esp")" ]
+  : > "$esp/.FDRData.new"; : > "$esp/.combined.memboot.new"
+  [ "$(stage_leftovers "$esp")" = ".combined.memboot.new .FDRData.new" ]
+}

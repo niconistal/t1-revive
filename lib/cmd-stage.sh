@@ -5,9 +5,13 @@
 #   t1-revive stage --dry-run  all checks, no writes
 #   t1-revive stage --force    even without the boot done marker (warns)
 #
-# Run only after the boot step reported 05ac:8600 stable. Files are staged under a
-# temporary name on the same filesystem, synced, renamed atomically and read
-# back with cmp. Nothing else on the ESP is touched.
+# Run only after the boot step reported 05ac:8600 stable. Two phases: all three files are
+# first written under temporary names on the same filesystem and synced, and only then
+# renamed into place, combined.memboot last. An interruption while writing leaves the old
+# set untouched; one between the renames leaves .<name>.new files, which the next stage
+# (and status) report, and rerunning stage completes the set from private/. FAT has no
+# atomic multi-file swap, so this narrows the mixed-set window to three renames rather
+# than closing it. Everything is read back with cmp. Nothing else on the ESP is touched.
 # shellcheck shell=bash
 
 # The dispatcher sources only lib/cmd-<sub>.sh; pull in the shared step code.
@@ -104,10 +108,18 @@ cmd_stage() {
     _stage_run "$dry" install -d "$esp"
   fi
 
-  say "stage: staging"
-  _stage_one "$dry" "$image" "$esp" combined.memboot
-  _stage_one "$dry" "$fdr"   "$esp" FDRData
-  _stage_one "$dry" "$vers"  "$esp" version.plist
+  if [ -n "$(stage_leftovers "$esp")" ]; then
+    warn "an earlier stage was interrupted (left: $(stage_leftovers "$esp")); this run replaces them and completes the set"
+  fi
+
+  say "stage: staging (write all three, then rename)"
+  _stage_write "$dry" "$image" "$esp" combined.memboot
+  _stage_write "$dry" "$fdr"   "$esp" FDRData
+  _stage_write "$dry" "$vers"  "$esp" version.plist
+  _stage_run "$dry" sync "$esp_mnt"
+  _stage_rename "$dry" "$esp" FDRData
+  _stage_rename "$dry" "$esp" version.plist
+  _stage_rename "$dry" "$esp" combined.memboot
   _stage_run "$dry" sync "$esp_mnt"
 
   say "stage: verify"
@@ -135,11 +147,25 @@ _stage_run() {
   if [ "$d" = 1 ]; then note "(dry) $*"; else "$@"; fi
 }
 
-# _stage_one DRY SRC ESPDIR NAME: temp name on the same filesystem, sync, rename.
-_stage_one() {
+# _stage_write DRY SRC ESPDIR NAME: write NAME under its temporary name and sync it.
+_stage_write() {
   local d=$1 s=$2 esp=$3 n=$4
   note "$n"
   _stage_run "$d" install -m 644 "$s" "$esp/.$n.new"
   _stage_run "$d" sync -f "$esp/.$n.new"
+}
+
+# _stage_rename DRY ESPDIR NAME: move the synced temporary file into place.
+_stage_rename() {
+  local d=$1 esp=$2 n=$3
   _stage_run "$d" mv -f "$esp/.$n.new" "$esp/$n"
+}
+
+# stage_leftovers ESPDIR: the temporary files an interrupted stage left, space-separated.
+stage_leftovers() {
+  local esp=${1:?stage_leftovers ESPDIR} n out=
+  for n in combined.memboot FDRData version.plist; do
+    [ -e "$esp/.$n.new" ] && out="$out${out:+ }.$n.new"
+  done
+  printf '%s' "$out"
 }

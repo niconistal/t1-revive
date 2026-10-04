@@ -18,6 +18,47 @@ priv_dir() {
   printf '%s\n' "$p"
 }
 
+# set_aside_artifacts STEP NAME...: move the named files a previous attempt left in
+# private/ into private/attempts/<stamp>-STEP/ before a restore starts, so the gates after
+# the restore can only see files this attempt produced. Nothing is deleted: the old files
+# stay 0600 under the 0700 private directory for inspection. A dry run prints the moves.
+set_aside_artifacts() {
+  local step=${1:?set_aside_artifacts STEP NAME...} p n dest=
+  shift
+  p="${T1R_STATE:?}/private"
+  for n in "$@"; do
+    [ -e "$p/$n" ] || continue
+    if [ -z "$dest" ]; then
+      dest="$p/attempts/$(date +%Y%m%d-%H%M%S)-$step"
+      if is_dry; then note "(dry) install -d -m 700 $dest"
+      else install -d -m 700 "$p/attempts" "$dest" || die 1 "cannot create $dest"; fi
+    fi
+    note "setting aside $n from an earlier attempt -> private/attempts/${dest##*/}/"
+    dry mv -f -- "$p/$n" "$dest/$n" || die 1 "cannot move $p/$n aside"
+  done
+  return 0
+}
+
+# fdr_replay_matches ORIGINAL REPLAYED: true when the replayed FDR store is the provisioned
+# one. Byte-identical is what every hardware run so far produced. A store that differs in
+# bytes but parses to the same plist (plistutil's XML rendering of both is identical) also
+# counts, since only the content is replayed to the device.
+fdr_replay_matches() {
+  local a=${1:?} b=${2:?} xa xb rc
+  [ -s "$a" ] && [ -s "$b" ] || return 1
+  cmp -s -- "$a" "$b" && return 0
+  xa=$(umask 077; mktemp "${T1R_STATE:?}/private/.fdr-a.XXXXXX") || return 1
+  xb=$(umask 077; mktemp "${T1R_STATE:?}/private/.fdr-b.XXXXXX") || { rm -f -- "$xa"; return 1; }
+  rc=1
+  if LD_LIBRARY_PATH="${T1R_LIBS:-}" "${T1R_PLISTUTIL:?}" -i "$a" -o "$xa" -f xml >/dev/null 2>&1 \
+     && LD_LIBRARY_PATH="${T1R_LIBS:-}" "${T1R_PLISTUTIL:?}" -i "$b" -o "$xb" -f xml >/dev/null 2>&1 \
+     && [ -s "$xa" ] && cmp -s -- "$xa" "$xb"; then
+    rc=0
+  fi
+  rm -f -- "$xa" "$xb"
+  return "$rc"
+}
+
 # prefix_env: the patched-stack locations. LD_LIBRARY_PATH is NOT exported
 # globally: the proven scripts pass it per command, and every idevicerestore,
 # usbmuxd and plistutil call below does the same with $T1R_LIBS.

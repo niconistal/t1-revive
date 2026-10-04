@@ -10,7 +10,7 @@
 # shellcheck shell=bash
 
 step_personalize() {
-  local priv fw rc boot_args f ok
+  local priv fw rc boot_args f ok replay=unknown
   prefix_env
   fw=$(firmware_dir) || exit "$?"
   boot_args='rd=md0 -restore IOUSBDeviceController-configuration=standardMuxOnly'
@@ -40,6 +40,8 @@ step_personalize() {
   note "no competing usbmuxd"
 
   priv=$(priv_dir) || exit 1
+  # Only this attempt's image, ticket and replayed store may pass the gate below.
+  set_aside_artifacts personalize FDRData.replayed combined.preflight.memboot preflight.apticket
 
   say "personalize: starting private usbmuxd"
   start_usbmuxd "$priv"
@@ -86,9 +88,14 @@ step_personalize() {
   done
   if [ -s "$priv/FDRData.replayed" ]; then
     if cmp -s "$priv/FDRData" "$priv/FDRData.replayed"; then
+      replay=yes
       note "FDR replay matches the provisioned store byte-for-byte: yes"
+    elif fdr_replay_matches "$priv/FDRData" "$priv/FDRData.replayed"; then
+      replay=yes
+      note "FDR replay matches the provisioned store: yes (same plist, different bytes)"
     else
-      note "FDR replay matches the provisioned store byte-for-byte: NO (sizes: $(file_size "$priv/FDRData") vs $(file_size "$priv/FDRData.replayed"))"
+      replay=no; ok=0
+      note "FDR replay matches the provisioned store: NO (sizes: $(file_size "$priv/FDRData") vs $(file_size "$priv/FDRData.replayed"))"
     fi
   fi
   if [ "$ok" = 1 ] && [ "$rc" = 0 ]; then
@@ -104,10 +111,20 @@ step_personalize() {
   stop_usbmuxd
   note "personalize finished. NOTHING has been written to the ESP."
   sleep 0.5
-  # Gate as the proven run did: image and ticket exist. Exit status and the replayed-store check
-  # are fatal only with --strict.
+  # Gate as the proven run did: image and ticket exist, and now also a replayed store that is
+  # the provisioned one (always fatal). Exit status and a missing replayed store are fatal only
+  # with --strict.
   if is_dry; then note "(dry) artefact gate skipped (no restore ran)"; return 0; fi
-  diag step=personalize restore_rc="$rc" artefacts_ok="$ok"
+  diag step=personalize restore_rc="$rc" artefacts_ok="$ok" replay="$replay"
+  # A replayed store that is not the provisioned one means the image and ticket were made
+  # against different identity data than the FDRData that would be staged next to them.
+  # Never continue from that, with or without --strict; set the pair aside so neither boot
+  # nor stage can use it.
+  if [ "$replay" = no ]; then
+    set_aside_artifacts personalize-replay-mismatch combined.preflight.memboot preflight.apticket FDRData.replayed
+    warn "the replayed FDR store differs from the provisioned one; do NOT boot or stage. Start again: t1-revive regenerate --from provision"
+    return 1
+  fi
   if [ ! -s "$priv/combined.preflight.memboot" ] || [ ! -s "$priv/preflight.apticket" ]; then
     warn "personalize finished but image/ticket missing"; return 1
   fi

@@ -211,7 +211,7 @@ fingerprints. Fingerprints never leave the Secure Enclave.
 
 | Path | Mode | Contents |
 | :--- | :--- | :--- |
-| `/var/lib/t1-revive/private/` | `0700`, files `0600` | the FDR store, the personalised boot image, the AP ticket, unredacted restore logs |
+| `/var/lib/t1-revive/private/` | `0700`, files `0600` | the FDR store, the personalised boot image, the AP ticket, unredacted restore logs; `attempts/` holds the same kinds of file from earlier attempts, set aside rather than deleted |
 | `/var/lib/t1-revive/efi-backup-<stamp>/` | `0700` | any `EFI/APPLE` files that existed before staging |
 | `/var/log/t1-revive/` | `0700` | redacted logs, one per command, `latest.log` symlink |
 | `/var/cache/t1-revive/` | `0755` | the firmware package and its extracted bundle; no device data |

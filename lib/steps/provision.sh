@@ -31,6 +31,9 @@ step_provision() {
   note "no competing usbmuxd"
 
   priv=$(priv_dir) || exit 1
+  # A new store invalidates everything personalize made from the old one: set all of it aside,
+  # so neither the gate below nor a later step can pick up a file an earlier attempt left.
+  set_aside_artifacts provision FDRData FDRData.replayed combined.preflight.memboot preflight.apticket
 
   say "provision: starting private usbmuxd"
   start_usbmuxd "$priv"

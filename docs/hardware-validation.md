@@ -47,7 +47,7 @@ state at each step as the tool reports it. Note the wall-clock time of each step
 | --- | --- | --- |
 | provision | `Restore Finished`; FDR store written; T1 at `8600` degraded | |
 | reset (`reset-1`) | return `0x0`; T1 back at `1281` within seconds | |
-| personalize | `Restore Finished`; image, ticket and replayed store written; replay byte-identical | |
+| personalize | `Restore Finished`; image, ticket and replayed store written; replay matches (a mismatch stops the step) | |
 | reset (`reset-2`) | as above | |
 | boot | `8600` within about 10 s, stable for 30 s, no fallback to `1281` | |
 | stage | three files verified on the ESP | |

@@ -55,7 +55,7 @@ it against a pinned checksum before extracting it.
 
 | What | Where | Lifetime |
 | --- | --- | --- |
-| FDR store, boot image, ticket, unredacted logs | `/var/lib/t1-revive/private/` | until you delete them. Nothing expires. They are the resume material for `--from` and a second copy of what the ESP holds |
+| FDR store, boot image, ticket, unredacted logs | `/var/lib/t1-revive/private/` | until you delete them. Nothing expires. They are the resume material for `--from` and a second copy of what the ESP holds. `private/attempts/` keeps the files of earlier attempts that a new restore set aside |
 | previous `EFI/APPLE` files, if any | `/var/lib/t1-revive/efi-backup-<stamp>/` | until you delete them |
 | redacted logs | `/var/log/t1-revive/` | until you delete them |
 | firmware package and bundle | `/var/cache/t1-revive/` | until you delete them; contains no device data |

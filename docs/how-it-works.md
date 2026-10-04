@@ -96,7 +96,14 @@ AP ticket are captured from the same transaction.
   `private/FDRData.replayed`, all 0600. Nothing on the ESP.
 
 Success: exit 0, `Restore Finished`, all three files non-empty, and the replayed store
-byte-identical to the provisioned store. The image and the ticket must come from one and the
+byte-identical to the provisioned store. A replayed store that differs in bytes but parses to
+the same plist also passes. One whose content differs always stops the run, with or without
+`--strict`: the image and ticket are moved aside so neither boot nor stage can use them, and
+the way on is a new run from provision. Before the restore starts, any image, ticket or
+replayed store an earlier attempt left in `private/` is moved to
+`private/attempts/<stamp>-personalize/`, so the gate can only see files this attempt made;
+provision does the same for its store and for everything personalize derived from it.
+Nothing is deleted. The image and the ticket must come from one and the
 same personalize run; a ticket requested separately after a reset produced images that looked right
 and sent the T1 back to recovery every time. Rehearsal: 1 min 22 s.
 
@@ -144,16 +151,22 @@ recovery at every boot.
 
 The ESP is discovered by partition type, mounted if needed, and must be a writable vfat. If
 the folder already holds any of the three files they are copied to
-`efi-backup-<stamp>/` in the state directory first. Each file is written under a temporary
-name on the same filesystem, synced, then renamed over the final name; then the filesystem
-is synced and each file is compared byte for byte with its source.
+`efi-backup-<stamp>/` in the state directory first. Staging has two phases. All three files
+are first written under temporary names on the same filesystem and synced; only then are they
+renamed over the final names, `combined.memboot` last. Then the filesystem is synced and each
+file is compared byte for byte with its source.
 
-### Why atomic
+### Why two phases, and what is still not atomic
 
 The firmware reads this folder at every boot with no host involved. A rename on the same
 filesystem is a single directory operation, so at no instant does the folder hold a
-half-written `combined.memboot` under its final name. If power failed mid-way, the folder
-would hold either the old file, the new file, or a temporary name the firmware ignores. A
+half-written `combined.memboot` under its final name. If power failed while the files were
+being written, the folder still holds the complete old set plus temporary names the firmware
+ignores. FAT has no way to swap three files in one operation, so an interruption between the
+three renames can still leave a mixed set; writing everything first shrinks that window to
+three directory operations in a row. The temporary names show it afterwards: `status`
+reports `.<name>.new` files left in the folder, `stage` warns about them, and rerunning
+`stage` completes the set from `private/`. A
 corrupt or partial file would not damage anything (the ROM validates what it loads and falls
 back to recovery), but it would cost a power cycle and a resume. The `cmp` after the sync is
 what lets the tool print "staged" and mean it.

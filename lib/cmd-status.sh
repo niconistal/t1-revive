@@ -7,7 +7,7 @@
 _st() { printf '  %-14s %s\n' "$1" "$2"; }
 
 cmd_status() {
-  local model t1 cfg esp dev mp has line n out
+  local model t1 cfg esp dev mp has line n out left f
   case "${1:-}" in -h|--help) echo "usage: t1-revive status"; return 0;; *) ;; esac
   printf 't1-revive %s\n' "$(version)"
 
@@ -39,6 +39,11 @@ cmd_status() {
       _st "ESP" "$dev at $mp: $out"
       if [[ -d "$mp/EFI/APPLE/EMBEDDEDOS" ]]; then
         _st "" "EMBEDDEDOS: $(dir_names "$mp/EFI/APPLE/EMBEDDEDOS")"
+        left=
+        for f in combined.memboot FDRData version.plist; do
+          [[ -e "$mp/EFI/APPLE/EMBEDDEDOS/.$f.new" ]] && left="$left${left:+ }.$f.new"
+        done
+        [[ -n "$left" ]] && _st "" "an interrupted stage left $left: the set may be mixed; run: sudo t1-revive stage"
       elif [[ "$has" = yes ]]; then _st "" "EMBEDDEDOS folder missing"; fi
     fi
   done < <(esp_candidates)
