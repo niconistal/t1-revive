@@ -13,6 +13,39 @@ _t1r_lib=${T1R_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)}/
 # shellcheck source=steps/common-steps.sh
 declare -F run_step >/dev/null 2>&1 || . "$_t1r_lib/steps/common-steps.sh"
 
+# handover_embeddedos_dir: where the staged EMBEDDEDOS set is mounted right now, for the
+# import command handover prints. Looks only at what is already mounted (the ESP of a
+# regenerate run, then /boot and /efi); mounts nothing. Empty when none is found.
+handover_embeddedos_dir() {
+  local d
+  for d in ${ESP_MNT:+"$ESP_MNT"} /boot /efi /boot/efi; do
+    [ -d "$d/EFI/APPLE/EMBEDDEDOS" ] && { printf '%s\n' "$d/EFI/APPLE/EMBEDDEDOS"; return 0; }
+  done
+  return 0
+}
+
+# handover_touchid_advice STATUS [EMBEDDEDOS_DIR]: what to tell the user about Touch ID, from
+# the `t1bridge status` text. A machine that already had Touch ID keeps it: the keybag is
+# restored with the device. Any other machine needs t1bridge's machine data and an
+# enrolment, and on freshly regenerated data the automatic import can finish with the
+# machine data empty, after which every enrolment fails at once (t1bridge#29). The import
+# by hand against the staged set is what fixed it there, so print that exact command.
+handover_touchid_advice() {
+  local status=$1 dir=${2:-}
+  case "$status" in
+    *"keybag: ready"*)
+      note "Touch ID: the existing enrolment stays valid (keybag ready)."
+      return 0;;
+  esac
+  note "Touch ID needs t1bridge's machine data and an enrolment. On freshly regenerated data the"
+  note "automatic import can leave the machine data empty and every enrolment then fails at once"
+  note "(t1bridge#29). Import the staged set by hand first, then enroll:"
+  note "   sudo t1bridge machine-data import --from ${dir:-<ESP mount>/EFI/APPLE/EMBEDDEDOS}"
+  note "   fprintd-enroll -f right-index-finger"
+  note "A first enrolment that fails once is the keybag still bootstrapping; retry once (docs/omarchy.md, section 3)."
+  return 0
+}
+
 cmd_handover() {
   local dev cfg m status sock=/run/t1bridge/touchbar.sock
   status=
@@ -71,12 +104,7 @@ cmd_handover() {
       note "(dry) wait up to 15 s for $sock, then: t1bridge status"
     fi
     note "If the Touch Bar is not drawn by t1bridge within ~10 s: full power cycle (the ESP is staged, it comes back)."
-    # A machine that already had Touch ID keeps it: the keybag is restored with the device. Only
-    # a machine whose keybag is not ready needs the import + enrolment steps.
-    case "$status" in
-      *"keybag: ready"*) note "Touch ID: the existing enrolment stays valid (keybag ready).";;
-      *) note "Touch ID needs t1bridge's import and enrolment (see its README; on Omarchy also docs/omarchy.md).";;
-    esac
+    handover_touchid_advice "$status" "$(handover_embeddedos_dir)"
   else
     note "t1bridge's selector module is present but the t1bridge CLI is not; install the t1bridge packages, then check: t1bridge status"
   fi

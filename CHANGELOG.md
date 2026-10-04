@@ -28,6 +28,13 @@ MacBookPro14,3.
   bit and ignores it. Sysfs levels are read through `T1R_SYSFS`, behind a readability test so an
   unmatched glob cannot reach the renderer's stderr and a numeric test so a value cannot reach
   arithmetic
+- **`handover` prints the import by hand when the keybag is not ready.** On a 13,3 with
+  regenerated data the automatic t1bridge import finished cleanly with the machine data empty,
+  and every enrolment then failed within ~20 ms
+  ([t1bridge#29](https://github.com/standardagents/t1bridge/issues/29)). The explicit
+  `t1bridge machine-data import --from <ESP>/EFI/APPLE/EMBEDDEDOS` committed it. `handover`
+  used to say only "see its README"; it now prints that command with the path of the staged
+  set it finds already mounted, and `docs/omarchy.md` documents the symptom
 
 ## 0.1.3 (2026-09-19)
 

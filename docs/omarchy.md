@@ -147,6 +147,20 @@ sudo t1bridge machine-data import --from /boot/EFI/APPLE/EMBEDDEDOS
 If the unit fails for you either way, the import by hand is the way through, and the unit
 belongs upstream with t1bridge.
 
+**Every enrolment fails at once (~20 ms, `enroll-unknown-error`) and `keybag: not-enrolled`
+never changes.** Seen on a 13,3 with freshly regenerated data
+([t1bridge#29](https://github.com/standardagents/t1bridge/issues/29)): the automatic import
+had run without an error and left the machine data empty, so the sensor had no calibration to
+enrol against. The same import by hand committed it, and enrolment worked after one retry:
+
+```sh
+sudo t1bridge machine-data import --from /boot/EFI/APPLE/EMBEDDEDOS
+fprintd-enroll -f right-index-finger
+```
+
+`t1-revive handover` prints this command, with your ESP's path, whenever the keybag is not
+ready.
+
 **The Touch Bar stays dark until you log out and back in.** The renderer runs under your
 systemd user manager, which fixed its supplementary groups when the session started, before
 the `t1bridge` group existed. Log out and back in, then the bar lights. Touch ID does not
@@ -157,7 +171,8 @@ depend on the renderer and works before that.
 `t1-revive regenerate` leaves the T1 booted and the ESP staged. `t1-revive handover`
 re-enumerates the device so t1bridge's configuration selector picks it up, with no restart
 of anything. So the order that works in one sitting is: regenerate, install t1bridge,
-`sudo t1-revive handover`, then enroll.
+`sudo t1-revive handover`, import the staged set by hand if handover says the keybag is not
+ready, then enroll.
 
 A plain reboot works just as well. The firmware loads the staged files at boot and
 t1bridge takes the T1 from there. Use whichever you prefer; nothing downstream depends on
