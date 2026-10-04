@@ -4,7 +4,11 @@ Dates are the days the work was proven on hardware, taken from the maintainer's 
 engineering notebook. Everything before the first public version happened on one
 MacBookPro14,3.
 
-## Unreleased
+## 0.1.4 (2026-10-04)
+
+Volume, mute, media and the OSD on the Touch Bar under Omarchy, contributed by @mbriney and
+reviewed on a MacBookPro14,2 and a 14,3; and a handover that names the import by hand a
+freshly regenerated machine can need before Touch ID enrols.
 
 - **A desktop provider for Omarchy.** t1bridge's built-in renderer draws volume, mute and media
   buttons only when a desktop provider is configured, and the core package ships none by design,
