@@ -4,7 +4,7 @@ Dates are the days the work was proven on hardware, taken from the maintainer's 
 engineering notebook. Everything before the first public version happened on one
 MacBookPro14,3.
 
-## Unreleased
+## 0.1.5 (2026-10-04)
 
 Three gaps in how the restore steps and staging guard their outputs, found in an outside source
 review of t1-revive. None of them was hit in a reported run; each is a way a failed or
