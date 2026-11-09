@@ -4,6 +4,21 @@ Dates are the days the work was proven on hardware, taken from the maintainer's 
 engineering notebook. Everything before the first public version happened on one
 MacBookPro14,3.
 
+## Unreleased
+
+Fedora support in the package layer, from two independent MacBookPro13,3 runs on Fedora 45
+(issue #14). The regeneration needed no change; preflight and the report did.
+
+- **Preflight checks and installs Fedora packages.** `lib/distro.sh` recognises the Fedora
+  family (`ID` or `ID_LIKE`), checks with `rpm`, installs with `dnf`, and asks for
+  `kernel-devel-$(uname -r)`, the headers of exactly the running kernel. Preflight no longer
+  prints the non-Arch `NO` (and exits 3) on every Fedora run. Fedora does not package
+  `acpi_call`; when it is missing, preflight says where to get it
+- **The report names the running kernel's package on Fedora.** Fedora keeps several
+  `kernel-core` versions installed; the bundle now reports the owner of the running kernel's
+  `vmlinuz` and its version, and `kernel-headers-pkg: kernel-devel-…` instead of
+  `linux-headers` and `kernel-match: unknown`
+
 ## 0.1.5 (2026-10-04)
 
 Three gaps in how the restore steps and staging guard their outputs, found in an outside source

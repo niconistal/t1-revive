@@ -16,8 +16,9 @@ so a confirmed model is not a promise. If you run it, use the checklist in
 [hardware-validation.md](hardware-validation.md) and report the result either way; your row
 goes in the table.
 
-**Does it work on Ubuntu, Fedora, Debian?** The regeneration itself is distribution-neutral,
-but the tool's package layer is implemented for Arch-based systems only and fails clearly
+**Does it work on Ubuntu, Fedora, Debian?** The regeneration itself is distribution-neutral.
+The tool's package layer is implemented for Arch-based systems and Fedora (`dnf`/`rpm`, with
+`acpi_call` built from source because Fedora does not package it) and fails clearly
 elsewhere. t1bridge ships signed packages for Arch and Omarchy only right now. Other
 distributions need packaging work, not new discoveries.
 

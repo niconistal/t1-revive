@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/distro.sh - package installs and kernel checks. Arch (and Arch-derived, e.g. Omarchy)
-# implemented; anything else fails with a clear message. Nothing runs at source time.
+# and Fedora implemented; anything else fails with a clear message. Nothing runs at source time.
 #
 # shellcheck shell=bash
 
@@ -12,7 +12,10 @@ export T1R_OS_RELEASE T1R_MODULES_DIR
 # headers are deliberately not in this list: which package carries them depends on the kernel
 # that is booted, so distro_required_pkgs appends distro_headers_pkg.
 T1R_ARCH_PKGS="libzip libusb curl openssl readline dkms acpi_call-dkms"
-export T1R_ARCH_PKGS
+# Fedora names for the same runtime libraries. Fedora does not package acpi_call, so it is not
+# in the list: preflight's /proc/acpi/call check covers it and says where to get it.
+T1R_FEDORA_PKGS="libzip libusb1 libcurl openssl-libs readline"
+export T1R_ARCH_PKGS T1R_FEDORA_PKGS
 
 _os_release_get() {  # _os_release_get KEY
   local k=$1 v
@@ -25,12 +28,18 @@ _os_release_get() {  # _os_release_get KEY
 # distro_id: ID from os-release (e.g. arch, omarchy, fedora); "unknown" when unreadable.
 distro_id() { _os_release_get ID || printf 'unknown\n'; }
 
-# distro_family: "arch" when ID or ID_LIKE says so, else the ID.
+# distro_family: "arch" or "fedora" when ID or ID_LIKE says so, else the ID.
 distro_family() {
   local id like
   id=$(distro_id); like=$(_os_release_get ID_LIKE 2>/dev/null || true)
-  case " $id $like " in *" arch "*|*" archlinux "*) printf 'arch\n';; *) printf '%s\n' "$id";; esac
+  case " $id $like " in
+    *" arch "*|*" archlinux "*) printf 'arch\n';;
+    *" fedora "*) printf 'fedora\n';;
+    *) printf '%s\n' "$id";;
+  esac
 }
+
+_rpm() { env LC_ALL=C rpm "$@"; }  # rpm with untranslated output
 
 _pacman() {  # pacman with Omarchy's direct-pacman guard lifted when Omarchy is present
   if [[ -d /usr/share/omarchy ]]; then env OMARCHY_ALLOW_DIRECT_PACMAN=1 LC_ALL=C pacman "$@"
@@ -47,14 +56,20 @@ distro_install() {
       for p in "$@"; do pacman -Q "$p" >/dev/null 2>&1 || missing+=("$p"); done
       [[ ${#missing[@]} -gt 0 ]] || return 0
       run_cmd _pacman -S --needed --noconfirm "${missing[@]}";;
-    *) die 1 "package installation is only implemented for Arch-based systems (this is '$(distro_id)'). Install the equivalents of: $* - then rerun without --install.";;
+    fedora)
+      local -a missing=() p
+      for p in "$@"; do _rpm -q "$p" >/dev/null 2>&1 || missing+=("$p"); done
+      [[ ${#missing[@]} -gt 0 ]] || return 0
+      run_cmd dnf install -y "${missing[@]}";;
+    *) die 1 "package installation is only implemented for Arch-based systems and Fedora (this is '$(distro_id)'). Install the equivalents of: $* - then rerun without --install.";;
   esac
 }
 
-# distro_installed PKG...: 0 when every package is installed (Arch); 1 otherwise.
+# distro_installed PKG...: 0 when every package is installed (Arch, Fedora); 1 otherwise.
 distro_installed() {
   case "$(distro_family)" in
     arch) pacman -Q "$@" >/dev/null 2>&1;;
+    fedora) _rpm -q "$@" >/dev/null 2>&1;;
     *) return 1;;
   esac
 }
@@ -94,11 +109,39 @@ distro_sync_and_upgrade() {
 # and returns 1 for a kernel no package owns (hand-built, or a fixture module directory).
 distro_kernel_pkg() {
   local owner
-  [[ "$(distro_family)" = arch ]] || return 1
-  command -v pacman >/dev/null 2>&1 || return 1
-  owner=$(pacman -Qqo "$T1R_MODULES_DIR/$(uname -r)/vmlinuz" 2>/dev/null | awk 'NF{print $1; exit}')
+  case "$(distro_family)" in
+    arch)
+      command -v pacman >/dev/null 2>&1 || return 1
+      owner=$(pacman -Qqo "$T1R_MODULES_DIR/$(uname -r)/vmlinuz" 2>/dev/null | awk 'NF{print $1; exit}');;
+    fedora)  # kernel-core owns the vmlinuz in the module directory
+      command -v rpm >/dev/null 2>&1 || return 1
+      # rpm -qf prints "file ... is not owned by any package" on stdout, so trust its exit
+      # status, not its output
+      owner=$(_rpm -qf --qf '%{NAME}\n' "$T1R_MODULES_DIR/$(uname -r)/vmlinuz" 2>/dev/null) || return 1
+      owner=$(awk 'NF{print $1; exit}' <<<"$owner");;
+    *) return 1;;
+  esac
   [[ -n "$owner" ]] || return 1
   printf '%s\n' "$owner"
+}
+
+# distro_kernel_pkg_version: version of the package that owns the running kernel. Fedora keeps
+# several kernel-core versions installed at once, so this asks for the owner of this kernel's
+# vmlinuz rather than the package name. Prints nothing and returns 1 when unresolved.
+distro_kernel_pkg_version() {
+  local v kpkg
+  case "$(distro_family)" in
+    fedora)
+      command -v rpm >/dev/null 2>&1 || return 1
+      v=$(_rpm -qf --qf '%{VERSION}-%{RELEASE}\n' "$T1R_MODULES_DIR/$(uname -r)/vmlinuz" 2>/dev/null) || return 1
+      v=$(awk 'NF{print; exit}' <<<"$v");;
+    arch)
+      kpkg=$(distro_kernel_pkg) || return 1
+      v=$(distro_pkg_version "$kpkg");;
+    *) return 1;;
+  esac
+  [[ -n "$v" ]] || return 1
+  printf '%s\n' "$v"
 }
 
 # distro_headers_pkg: the package that carries the headers for the running kernel - the owner
@@ -106,8 +149,16 @@ distro_kernel_pkg() {
 # the stock "linux-headers" when neither can be resolved. So the check reads the headers dkms
 # actually builds against on a -lts or -omarchy kernel instead of the stock ones, and
 # `preflight --install` installs those.
+#
+# On Fedora the headers are kernel-devel, versioned per kernel; the full NEVRA of the running
+# kernel's (`kernel-devel-$(uname -r)`) is what both `rpm -q` and `dnf install` take, and it
+# names exactly the build tree DKMS uses, whichever kernels are installed besides it.
 distro_headers_pkg() {
   local owner kpkg
+  if [[ "$(distro_family)" = fedora ]]; then
+    printf 'kernel-devel-%s\n' "$(uname -r)"
+    return 0
+  fi
   if [[ "$(distro_family)" = arch ]] && command -v pacman >/dev/null 2>&1; then
     owner=$(pacman -Qqo "$T1R_MODULES_DIR/$(uname -r)/build" 2>/dev/null | awk 'NF{print $1; exit}')
     if [[ -n "$owner" ]]; then printf '%s\n' "$owner"; return 0; fi
@@ -116,8 +167,13 @@ distro_headers_pkg() {
   printf 'linux-headers\n'
 }
 
-# distro_required_pkgs: T1R_ARCH_PKGS plus the headers package for the running kernel.
-distro_required_pkgs() { printf '%s %s\n' "$T1R_ARCH_PKGS" "$(distro_headers_pkg)"; }
+# distro_required_pkgs: the family's package list plus the headers package for the running kernel.
+distro_required_pkgs() {
+  case "$(distro_family)" in
+    fedora) printf '%s %s\n' "$T1R_FEDORA_PKGS" "$(distro_headers_pkg)";;
+    *) printf '%s %s\n' "$T1R_ARCH_PKGS" "$(distro_headers_pkg)";;
+  esac
+}
 
 # distro_kernel_matches: 0 when the running kernel is the installed one. Primary rule: a package
 # owns the running kernel's module directory (any flavour: linux, -lts, -omarchy). Also
@@ -132,6 +188,12 @@ distro_kernel_matches() {
     [[ -n "$inst" ]] && [[ "$inst" = "$running" ]] && return 0
     return 1
   fi
+  # Fedora installs each kernel as its own package version, so ownership of the running
+  # kernel's module directory is the whole rule there.
+  if [[ "$(distro_family)" = fedora ]]; then
+    distro_kernel_pkg >/dev/null 2>&1
+    return
+  fi
   return 1
 }
 
@@ -142,6 +204,10 @@ distro_headers_present() { [[ -d "$T1R_MODULES_DIR/$(uname -r)/build" ]]; }
 distro_pkg_version() {
   case "$(distro_family)" in
     arch) pacman -Q "$1" 2>/dev/null | awk '{print $2}';;
+    fedora)  # like rpm -qf, rpm -q reports "not installed" on stdout with a non-zero status
+      local v
+      v=$(_rpm -q --qf '%{VERSION}-%{RELEASE}\n' "$1" 2>/dev/null) || return 1
+      awk 'NF{print; exit}' <<<"$v";;
     *) return 1;;
   esac
 }

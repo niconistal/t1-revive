@@ -160,8 +160,37 @@ pf_load() {
   t1r_use_osrelease other; pf_load
   run cmd_preflight --local
   assert_status 3
-  assert_contains "$output" "package checks are implemented for Arch-based systems only"
+  assert_contains "$output" "package checks are implemented for Arch-based systems and Fedora only"
   assert_contains "$output" "packages and kernel (nonesuch)"
+}
+
+# --- Fedora ----------------------------------------------------------------------------------
+# Before Fedora support, every Fedora run printed the non-Arch NO and preflight always exited 3
+# there, although regenerate itself works unchanged (reported in issue #14).
+pf_fedora_pkgs() {
+  t1r_use_osrelease fedora
+  t1r_stub_rpm
+  local p
+  for p in libzip libusb1 libcurl openssl-libs readline; do t1r_rpm_installed "$p" 1.0-1.fc45; done
+  t1r_rpm_owns "$(t1r_kernel_dir)/vmlinuz" kernel-core 1.0-1.fc45
+}
+
+@test "preflight (Fedora): installed packages pass, no Arch-only NO line" {
+  pf_fedora_pkgs
+  t1r_rpm_installed kernel-devel "$(uname -r | sed 's/\.[^.]*$//')"
+  pf_load
+  run cmd_preflight --local
+  refute_contains "$output" 'implemented for Arch-based systems'
+  refute_contains "$output" 'missing packages'
+  assert_contains "$output" "packages: libzip libusb1 libcurl openssl-libs readline kernel-devel-$(uname -r)"
+}
+
+@test "preflight (Fedora): missing packages are named with Fedora names" {
+  pf_fedora_pkgs
+  pf_load
+  run cmd_preflight --local
+  assert_status 3
+  assert_contains "$output" "missing packages: kernel-devel-$(uname -r)"
 }
 
 @test "sourcing lib/cmd-preflight.sh has no side effects" {

@@ -200,8 +200,61 @@ t1r_pacman_owns() {
   case "$1" in */build) mkdir -p "$1" ;; *) mkdir -p "$(dirname -- "$1")"; : >"$1" ;; esac
 }
 
-# t1r_kernel_dir: the fake module directory of the running kernel (t1r_stub_pacman).
+# t1r_kernel_dir: the fake module directory of the running kernel (t1r_stub_pacman/rpm).
 t1r_kernel_dir() { printf '%s/%s\n' "${T1R_MODULES_DIR:?t1r_stub_pacman first}" "$(uname -r)"; }
+
+# t1r_stub_rpm: the Fedora counterpart of t1r_stub_pacman - a fake rpm(8) on PATH plus the same
+# fake module tree. t1r_rpm_installed fills `rpm -q`, t1r_rpm_owns fills `rpm -qf`. Only the
+# query forms lib/distro.sh uses are emulated (-q NAME..., -q --qf FMT NAME, -qf [--qf FMT]
+# PATH, where FMT is %{NAME} or %{VERSION}-%{RELEASE}); anything else exits 1.
+t1r_stub_rpm() {
+  export T1R_RPM_INSTALLED=$T1R_TMP/rpm-installed T1R_RPM_OWNERS=$T1R_TMP/rpm-owners
+  : >"$T1R_RPM_INSTALLED"
+  : >"$T1R_RPM_OWNERS"
+  export T1R_MODULES_DIR=$T1R_TMP/modules
+  mkdir -p "$T1R_MODULES_DIR/$(uname -r)"
+  t1r_stub_bin rpm <<'STUB'
+#!/usr/bin/env bash
+fmt=''
+fields() {  # fields NAME VERSION-RELEASE -> the requested format (default: NAME-VERSION-RELEASE)
+  case "$fmt" in
+    '%{NAME}\n') printf '%s\n' "$1" ;;
+    '%{VERSION}-%{RELEASE}\n') printf '%s\n' "$2" ;;
+    *) printf '%s-%s\n' "$1" "$2" ;;
+  esac
+}
+mode=${1:-}; shift || true
+if [[ ${1:-} == --qf ]]; then fmt=$2; shift 2; fi
+case "$mode" in
+  -qf)
+    while read -r path name ver; do
+      [[ $path == "${1:-}" ]] || continue
+      fields "$name" "$ver"; exit 0
+    done <"$T1R_RPM_OWNERS"
+    printf 'file %s is not owned by any package\n' "${1:-}"; exit 1;;
+  -q)
+    rc=0
+    for want; do
+      # a query matches NAME, or the full NAME-VERSION-RELEASE.ARCH form dnf also accepts
+      line=$(awk -v w="$want" '$1==w || $1"-"$2==w || index(w, $1"-"$2".")==1 {print; exit}' "$T1R_RPM_INSTALLED")
+      if [[ -n $line ]]; then read -r name ver <<<"$line"; fields "$name" "$ver"
+      else printf 'package %s is not installed\n' "$want"; rc=1; fi
+    done
+    exit $rc;;
+esac
+exit 1
+STUB
+}
+
+# t1r_rpm_installed NAME VERSION-RELEASE: make the stub rpm report NAME as installed.
+t1r_rpm_installed() { printf '%s %s\n' "$1" "$2" >>"${T1R_RPM_INSTALLED:?t1r_stub_rpm first}"; }
+
+# t1r_rpm_owns PATH NAME VERSION-RELEASE: make the stub rpm answer for `-qf PATH`, and create
+# PATH under the fake module tree.
+t1r_rpm_owns() {
+  printf '%s %s %s\n' "$1" "$2" "$3" >>"${T1R_RPM_OWNERS:?t1r_stub_rpm first}"
+  case "$1" in */build) mkdir -p "$1" ;; *) mkdir -p "$(dirname -- "$1")"; : >"$1" ;; esac
+}
 
 # t1r_stub_apple_data: a synthetic EFI/APPLE/EMBEDDEDOS in the stub mount's source tree.
 t1r_stub_apple_data() {
