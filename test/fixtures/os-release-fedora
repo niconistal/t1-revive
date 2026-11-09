@@ -1,0 +1,4 @@
+NAME="Synthetic Fedora"
+PRETTY_NAME="Synthetic Fedora (test fixture)"
+ID=fedora
+VERSION_ID=45

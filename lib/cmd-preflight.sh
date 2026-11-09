@@ -78,7 +78,9 @@ cmd_preflight() {
   fi
 
   pf_head "packages and kernel ($(distro_id))"
-  if [[ "$(distro_family)" = arch ]]; then
+  local family
+  family=$(distro_family)
+  if [[ "$family" = arch || "$family" = fedora ]]; then
     if [[ "$do_install" = 1 ]] && [[ "$is_root" = 1 ]]; then
       if distro_needs_sync; then
         if distro_sync_and_upgrade; then pf_ok "system synced and upgraded"; else pf_no "system upgrade failed (see pacman's output above; or run omarchy-update / pacman -Syu and retry)"; fi
@@ -92,18 +94,22 @@ cmd_preflight() {
     pkgs=$(distro_required_pkgs)
     if [[ "$do_install" = 1 ]] && [[ "$is_root" = 1 ]] && [[ "$_pf_reboot" = 0 ]]; then
       # shellcheck disable=SC2086
-      if distro_install $pkgs; then pf_ok "packages: $pkgs"; else pf_no "package install failed: $pkgs (fresh install with only the offline package DB? rerun with --install after 'pacman -Sy')"; fi
+      if distro_install $pkgs; then pf_ok "packages: $pkgs"
+      elif [[ "$family" = fedora ]]; then pf_no "package install failed: $pkgs (see dnf's output above)"
+      else pf_no "package install failed: $pkgs (fresh install with only the offline package DB? rerun with --install after 'pacman -Sy')"; fi
     else
       local missing='' p
       for p in $pkgs; do distro_installed "$p" || missing="$missing $p"; done
       if [[ -z "$missing" ]]; then pf_ok "packages: $pkgs"; else pf_no "missing packages:${missing} (sudo t1-revive preflight --install)"; fi
     fi
   else
-    pf_no "package checks are implemented for Arch-based systems only; make sure the equivalents of '$T1R_ARCH_PKGS' and the headers for $(uname -r) are installed"
+    pf_no "package checks are implemented for Arch-based systems and Fedora only; make sure the equivalents of '$T1R_ARCH_PKGS' and the headers for $(uname -r) are installed"
   fi
   if distro_headers_present; then pf_ok "kernel headers for $(uname -r)"; else pf_no "no kernel headers for $(uname -r) (dkms cannot build acpi_call)"; fi
   if [[ "$is_root" = 1 ]] && [[ "$T1R_DRY_RUN" != 1 ]]; then modprobe acpi_call 2>/dev/null || true; fi
   if [[ -e /proc/acpi/call ]]; then pf_ok "acpi_call loaded (/proc/acpi/call): the T1 reset is available"
+  elif [[ "$is_root" = 1 && "$family" = fedora ]] && ! modinfo acpi_call >/dev/null 2>&1; then
+    pf_no "acpi_call not available: the T1 reset (FRST) needs it, and Fedora does not package it; build it from https://github.com/nix-community/acpi_call (with DKMS, or make and install into /lib/modules/$(uname -r)/extra, then depmod)"
   elif [[ "$is_root" = 1 ]]; then pf_no "acpi_call not loaded: the T1 reset (FRST) needs it (check: dkms status; journalctl -k | grep acpi_call)"
   else pf_no "acpi_call not loaded (as root, preflight loads it: sudo t1-revive preflight)"; fi
 

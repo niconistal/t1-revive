@@ -79,8 +79,17 @@ report_section_system() {
   # The package is the one that owns the running kernel, not `linux`: on Omarchy an unbooted
   # stock `linux` sits next to the booted linux-omarchy, and naming that one made the bundle
   # report a kernel that is not running, with kernel-match: no (issues #7 and #9).
-  local pkgname='' pkgver='-' match=unknown
-  if command -v pacman >/dev/null 2>&1; then
+  local pkgname='' pkgver='-' match=unknown family=''
+  if report_have distro_family; then family=$(distro_family 2>/dev/null); fi
+  if [ "$family" = fedora ] && command -v rpm >/dev/null 2>&1; then
+    if report_have distro_kernel_pkg; then pkgname=$(distro_kernel_pkg 2>/dev/null) || pkgname=''; fi
+    [ -n "$pkgname" ] || pkgname=kernel-core
+    if report_have distro_kernel_pkg_version; then pkgver=$(distro_kernel_pkg_version 2>/dev/null) || pkgver=''; fi
+    [ -n "$pkgver" ] || pkgver='-'
+    if report_have distro_kernel_matches; then
+      if distro_kernel_matches 2>/dev/null; then match=yes; else match=no; fi
+    fi
+  elif command -v pacman >/dev/null 2>&1; then
     if report_have distro_kernel_pkg; then pkgname=$(distro_kernel_pkg 2>/dev/null) || pkgname=''; fi
     [ -n "$pkgname" ] || pkgname=linux
     pkgver=$(pacman -Q "$pkgname" 2>/dev/null | awk '{print $2}')
@@ -250,6 +259,22 @@ report_section_state() {
 
 report_section_packages() {
   report_kv section packages
+  # Fedora: no t1bridge or acpi_call packages exist there, so report what does: the kernel,
+  # its headers, dkms, and the fingerprint pair (stock or a local t1bridge rebuild).
+  if report_have distro_family && [ "$(distro_family 2>/dev/null)" = fedora ] && command -v rpm >/dev/null 2>&1; then
+    local fp fver fk='' fh=''
+    if report_have distro_kernel_pkg; then fk=$(distro_kernel_pkg 2>/dev/null) || fk=''; fi
+    if report_have distro_headers_pkg; then fh=$(distro_headers_pkg 2>/dev/null) || fh=''; fi
+    fver=''
+    if report_have distro_kernel_pkg_version; then fver=$(distro_kernel_pkg_version 2>/dev/null) || fver=''; fi
+    report_kv "pkg.${fk:-kernel-core}" "${fver:-not-installed}"
+    for fp in "${fh:-kernel-devel}" dkms libfprint fprintd; do
+      fver=$(distro_pkg_version "$fp" 2>/dev/null)
+      report_kv "pkg.$fp" "${fver:-not-installed}"
+    done
+    if command -v t1bridge >/dev/null 2>&1; then report_kv t1bridge-bin yes; else report_kv t1bridge-bin no; fi
+    return
+  fi
   if ! command -v pacman >/dev/null 2>&1; then
     report_kv packages pacman-not-available
     return

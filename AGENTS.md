@@ -42,7 +42,7 @@ licences (LGPL-2.1 for idevicerestore and libirecovery, GPL for usbmuxd).
 bin/t1-revive            dispatcher: resolves T1R_ROOT, sources lib/common.sh, runs cmd_<sub>
 lib/common.sh            logging, redaction, confirm, exit codes, dirs, lock, T1 USB state, diag
 lib/discover.sh          ESP, DMI model + allowlist, FRST ACPI path, T1 device node
-lib/distro.sh            package installs and kernel checks (Arch implemented; others fail clearly)
+lib/distro.sh            package installs and kernel checks (Arch and Fedora implemented; others fail clearly)
 lib/firmware.sh          fetch + verify + extract Apple's EmbeddedOSFirmware.pkg into the cache
 lib/report.sh            cmd_report: redacted, structured diagnostic bundle
 lib/cmd-preflight.sh     cmd_preflight

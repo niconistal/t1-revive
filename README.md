@@ -91,9 +91,12 @@ handle if you want it there. See [Testing and reporting](#-testing-and-reporting
 
 - **A T1 MacBook Pro** from the list above, with the T1 in recovery mode: `lsusb` shows
   `05ac:1281 Apple, Inc. Mobile Device (Recovery Mode)` instead of `05ac:8600`.
-- **An Arch-based x86_64 Linux.** Tested on Omarchy 4.0.2 with kernel 7.1.9. Other
-  distributions fail clearly at preflight; the restore itself is distribution-neutral and
-  packaging help is welcome.
+- **An Arch-based or Fedora x86_64 Linux.** Tested on Omarchy 4.0.2 with kernel 7.1.9, and
+  on Fedora 45 with kernel 7.2.15 ([#14](https://github.com/niconistal/t1-revive/issues/14)).
+  Fedora does not package `acpi_call`: build it from
+  [nix-community/acpi_call](https://github.com/nix-community/acpi_call) first; preflight says
+  so when it is missing. Other distributions fail clearly at preflight; the restore itself is
+  distribution-neutral and packaging help is welcome.
 - **Root through `sudo`, mains power, and a network path to Apple:** `gs.apple.com` and
   `swcdn.apple.com` over HTTPS. A fresh install on the 2017 15-inch can come up with no
   Wi-Fi at all; see the [appendix](#-appendix-installing-with-no-network) at the end of this
