@@ -238,6 +238,15 @@ udev /etc/udev/rules.d/99-ibridge.rules
   assert_contains "$output" 'a blacklist alone does not help'
 }
 
+@test "preflight: a packaged rule pinning the T1 gets the override advice" {
+  pf_load
+  legacy_t1_stack() { printf 'udev-pkg /usr/lib/udev/rules.d/39-usbmuxd.rules\n'; }
+  run cmd_preflight --local
+  assert_status 3
+  assert_contains "$output" 'udev-pkg /usr/lib/udev/rules.d/39-usbmuxd.rules'
+  assert_contains "$output" 'override it with a same-named copy in /etc/udev/rules.d'
+}
+
 @test "preflight: a clean machine gets an ok line for the legacy stack check" {
   pf_load
   run cmd_preflight --local

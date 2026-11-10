@@ -193,6 +193,9 @@ cmd_preflight() {
     pf_no "an older Touch Bar stack is still on this machine: $(printf '%s' "$legacy" | paste -sd'; ' -)"
     note "it binds the T1 and pins its USB configuration, so the boot step reaches 8600 and then wedges (issue #10)"
     note "stop and mask any unit that loads it (a blacklist alone does not help: such units insmod the module directly), move the udev rule aside, then reboot"
+    if printf '%s\n' "$legacy" | grep -q '^udev-pkg '; then
+      note "a packaged rule (udev-pkg) comes back with every package update: override it with a same-named copy in /etc/udev/rules.d that drops its 05ac:8600 lines (usbmuxd's 39-usbmuxd.rules: standardagents/t1bridge#64)"
+    fi
   else
     pf_ok "no older Touch Bar stack (apple-ib-drv and friends)"
   fi

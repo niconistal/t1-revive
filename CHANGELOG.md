@@ -4,6 +4,20 @@ Dates are the days the work was proven on hardware, taken from the maintainer's 
 engineering notebook. Everything before the first public version happened on one
 MacBookPro14,3.
 
+## Unreleased
+
+- **Preflight now sees usbmuxd's packaged rule.** usbmuxd ships
+  `/usr/lib/udev/rules.d/39-usbmuxd.rules`, which sets `bConfigurationValue=1` on every
+  `05ac:8600` add. After a regeneration that puts the T1 back in configuration 1, and t1bridge
+  stays at `usb-configuration: unexpected` (standardagents/t1bridge#64). `legacy_t1_stack`
+  only scanned the admin directories, so it never saw it. It now also reports such packaged
+  rules as `udev-pkg`, unless an admin rule of the same name overrides them, and preflight
+  says how to override one
+- **A udev rule counts only when one rule pins the T1.** The check matched whole files, so an
+  admin override of usbmuxd's rules whose comment named `05ac:8600`, next to its iPhone pins,
+  was reported as a T1 pin. Rules are now read one at a time, with continuation lines joined
+  and comments dropped
+
 ## 0.1.5 (2026-10-04)
 
 Three gaps in how the restore steps and staging guard their outputs, found in an outside source
