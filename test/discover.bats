@@ -316,8 +316,8 @@ STUB
 legacy_env() {
   t1r_load discover
   t1r_need legacy_t1_stack
-  export T1R_UDEV_RULES_DIRS=$T1R_TMP/udev
-  mkdir -p "$T1R_UDEV_RULES_DIRS"
+  export T1R_UDEV_RULES_DIRS=$T1R_TMP/udev T1R_PKG_UDEV_RULES_DIRS=$T1R_TMP/udev-pkg
+  mkdir -p "$T1R_UDEV_RULES_DIRS" "$T1R_PKG_UDEV_RULES_DIRS"
   t1r_stub_bin lsmod <<'STUB'
 #!/usr/bin/env bash
 cat "${T1R_STUB_LSMOD:-/dev/null}" 2>/dev/null || true
@@ -425,8 +425,73 @@ RULE
 
 @test "legacy_t1_stack: a missing rules directory is not an error" {
   legacy_env
-  export T1R_UDEV_RULES_DIRS=$T1R_TMP/does-not-exist
+  export T1R_UDEV_RULES_DIRS=$T1R_TMP/does-not-exist T1R_PKG_UDEV_RULES_DIRS=$T1R_TMP/does-not-exist-either
   run legacy_t1_stack
   assert_status 1
   assert_eq '' "$output"
+}
+
+# --- packaged rules (usbmuxd's 39-usbmuxd.rules) ---------------------------------------------
+# usbmuxd ships a rule in /usr/lib/udev/rules.d that sets bConfigurationValue=1 on 05ac:8600
+# add. After a regeneration that returns the T1 to configuration 1 and t1bridge stays at
+# usb-configuration: unexpected (standardagents/t1bridge#64). The same file also pins iPhones,
+# and t1bridge's own packaged rules mention 8600 without pinning anything.
+usbmuxd_rules() {  # the shape of usbmuxd's rule file, with or without its 8600 lines
+  printf '%s\n' \
+    '# usbmuxd (Apple Mobile Device Muxer)' \
+    'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{PRODUCT}=="5ac/12[9a][0-9a-f]/*|5ac/8600/*", TAG+="systemd"' \
+    'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{PRODUCT}=="5ac/12[9a][0-9a-f]/*", ACTION=="add", ATTR{bConfigurationValue}="0", OWNER="usbmux"'
+  [[ ${1:-} == with-t1 ]] && printf '%s\n' \
+    'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{PRODUCT}=="5ac/8600/*", ACTION=="add", ATTR{bConfigurationValue}="1", OWNER="usbmux"'
+  return 0
+}
+
+@test "legacy_t1_stack: a packaged rule pinning 05ac:8600 is reported as udev-pkg" {
+  legacy_env
+  usbmuxd_rules with-t1 >"$T1R_PKG_UDEV_RULES_DIRS/39-usbmuxd.rules"
+  run legacy_t1_stack
+  assert_status 0
+  assert_contains "$output" "udev-pkg $T1R_PKG_UDEV_RULES_DIRS/39-usbmuxd.rules"
+}
+
+@test "legacy_t1_stack: a packaged rule overridden in an admin directory is left alone" {
+  legacy_env
+  usbmuxd_rules with-t1 >"$T1R_PKG_UDEV_RULES_DIRS/39-usbmuxd.rules"
+  { echo '# override: same rules without the Apple T1 (05ac:8600) lines'; usbmuxd_rules; } \
+    >"$T1R_UDEV_RULES_DIRS/39-usbmuxd.rules"
+  run legacy_t1_stack
+  assert_status 1
+  assert_eq '' "$output"
+}
+
+@test "legacy_t1_stack: iPhone pins next to an unpinned 8600 match are left alone" {
+  legacy_env
+  usbmuxd_rules >"$T1R_PKG_UDEV_RULES_DIRS/39-usbmuxd.rules"
+  run legacy_t1_stack
+  assert_status 1
+  assert_eq '' "$output"
+}
+
+@test "legacy_t1_stack: t1bridge's packaged rules are never reported" {
+  legacy_env
+  cat >"$T1R_PKG_UDEV_RULES_DIRS/99-zz-t1bridge-touchbar.rules" <<'RULE'
+ACTION=="add|change", SUBSYSTEM=="drm", KERNEL=="card[0-9]*", \
+  SUBSYSTEMS=="usb", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="8600", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}="t1-touchbar-hw.service"
+RULE
+  run legacy_t1_stack
+  assert_status 1
+  assert_eq '' "$output"
+}
+
+@test "legacy_t1_stack: a T1 pin split across continuation lines is still reported" {
+  legacy_env
+  cat >"$T1R_UDEV_RULES_DIRS/99-ibridge.rules" <<'RULE'
+ACTION=="add", SUBSYSTEM=="usb", \
+  ATTR{idVendor}=="05ac", ATTR{idProduct}=="8600", \
+  ATTR{bConfigurationValue}="1"
+RULE
+  run legacy_t1_stack
+  assert_status 0
+  assert_contains "$output" 'udev '
 }

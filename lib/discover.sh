@@ -45,10 +45,16 @@ T1R_LEGACY_MODULES="apple_ibridge apple_ib_tb apple_ib_als appletb"
 # DKMS names its packages, not its modules: apple-ib-drv is the source package that builds
 # apple_ibridge, apple_ib_tb and apple_ib_als, so the two lists do not overlap by spelling.
 T1R_LEGACY_DKMS="apple-ib-drv apple-ibridge apple-touchbar appletb"
-# Admin-provided rule directories only: package-provided rules under /usr/lib/udev/rules.d
-# are t1bridge's own and must never be flagged.
+# Admin-provided rule directories: any T1-related rule that pins a configuration is flagged.
 : "${T1R_UDEV_RULES_DIRS:=/etc/udev/rules.d /run/udev/rules.d}"
-export T1R_LEGACY_MODULES T1R_LEGACY_DKMS T1R_UDEV_RULES_DIRS
+# Package-provided rule directories hold t1bridge's own rules, which must never be flagged, but
+# also usbmuxd's 39-usbmuxd.rules, which pins 05ac:8600 to configuration 1 on add and undoes
+# t1bridge's display configuration after a regeneration (standardagents/t1bridge#64,
+# libimobiledevice/usbmuxd#291). Here only a single rule line that both names 8600 and sets
+# bConfigurationValue counts, and a file is skipped when a same-named file in an admin
+# directory overrides it, as udev does.
+: "${T1R_PKG_UDEV_RULES_DIRS:=/usr/lib/udev/rules.d}"
+export T1R_LEGACY_MODULES T1R_LEGACY_DKMS T1R_UDEV_RULES_DIRS T1R_PKG_UDEV_RULES_DIRS
 
 # legacy_t1_stack: one line per leftover found, "KIND DETAIL"; returns 1 when the machine is
 # clean. Reads only - nothing is unloaded, unlinked or masked.
@@ -56,6 +62,22 @@ export T1R_LEGACY_MODULES T1R_LEGACY_DKMS T1R_UDEV_RULES_DIRS
 #   dkms NAME     a legacy DKMS package is built and installed, so something can insmod it
 #                 again after a blacklist or a reboot - both are reported when both are true
 #   udev PATH     an admin udev rule that pins the T1's USB configuration
+# _udev_rules FILE: the file's rules, one per line - continuation lines joined, comments and
+# blank lines dropped - so a check can ask what a single rule does.
+_udev_rules() {
+  awk '{ sub(/^[ \t]+/, "") }
+       /^#/ && cont == "" { next }
+       /\\$/ { cont = cont substr($0, 1, length($0) - 1) " "; next }
+       { line = cont $0; cont = ""; if (line !~ /^[ \t]*$/) print line }
+       END { if (cont != "") print cont }' "$1" 2>/dev/null
+}
+
+# _udev_pins_t1 FILE PATTERN: 0 when one rule in FILE matches PATTERN (what identifies the T1)
+# and also sets bConfigurationValue.
+_udev_pins_t1() {
+  _udev_rules "$1" | grep -F 'bConfigurationValue' | grep -qiE "$2"
+}
+
 legacy_t1_stack() {
   local found=1 m d f mods dk
   mods=$(lsmod 2>/dev/null) || mods=''
@@ -74,11 +96,26 @@ legacy_t1_stack() {
     [[ -d "$d" ]] || continue
     while IFS= read -r f; do
       [[ -n "$f" ]] || continue
-      # a configuration pin is only interesting when the rule is about the T1
-      if grep -qiE '05ac|8600|ibridge|touch ?bar' "$f" 2>/dev/null; then
+      # a configuration pin is only interesting when that same rule is about the T1 (a whole-
+      # file match flagged an override whose comment names 05ac:8600 next to iPhone pins)
+      if _udev_pins_t1 "$f" '05ac|8600|ibridge|touch ?bar'; then
         printf 'udev %s\n' "$f"; found=0
       fi
     done < <(grep -rlsF 'bConfigurationValue' "$d" 2>/dev/null | sort)
+  done
+  local a overridden
+  for d in $T1R_PKG_UDEV_RULES_DIRS; do
+    [[ -d "$d" ]] || continue
+    while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      overridden=0
+      for a in $T1R_UDEV_RULES_DIRS; do
+        [[ -e "$a/$(basename -- "$f")" ]] && overridden=1
+      done
+      [[ "$overridden" = 1 ]] && continue
+      _udev_pins_t1 "$f" '8600' || continue
+      printf 'udev-pkg %s\n' "$f"; found=0
+    done < <(grep -lsF '8600' "$d"/*.rules 2>/dev/null | sort)
   done
   return "$found"
 }
